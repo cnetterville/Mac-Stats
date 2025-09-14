@@ -53,6 +53,20 @@ struct SettingsView: View {
                     Toggle("Show Power Consumption", isOn: $preferences.showPowerConsumption)
                 }
                 
+                Section("Interface Style") {
+                    Toggle("Use Tabbed View", isOn: $preferences.useTabbedView)
+                    
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                        Text("Tabbed view organizes stats into categories. Restart the app to apply changes.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                }
+                
                 Section("Menu Bar Icon") {
                     Toggle("Show CPU in Menu Bar", isOn: $preferences.showMenuBarCPU)
                     Toggle("Show Memory in Menu Bar", isOn: $preferences.showMenuBarMemory)

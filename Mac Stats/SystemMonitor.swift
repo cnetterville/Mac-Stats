@@ -149,6 +149,34 @@ struct SystemInfo {
     }
 }
 
+// Struct to hold Power Adapter information
+struct PowerAdapterInfo {
+    let isConnected: Bool
+    let wattage: Int // Power adapter wattage (20, 30, 67, 96, 140, etc.)
+    let type: String // "USB-C", "MagSafe", "MagSafe 3", "Lightning"
+    let inputPower: Double // Current power draw in watts
+    let efficiency: Double // Charging efficiency percentage
+    let model: String // "67W USB-C Power Adapter"
+    
+    init() {
+        self.isConnected = false
+        self.wattage = 0
+        self.type = "Unknown"
+        self.inputPower = 0.0
+        self.efficiency = 0.0
+        self.model = "Unknown"
+    }
+    
+    init(isConnected: Bool, wattage: Int, type: String, inputPower: Double, efficiency: Double, model: String) {
+        self.isConnected = isConnected
+        self.wattage = wattage
+        self.type = type
+        self.inputPower = inputPower
+        self.efficiency = efficiency
+        self.model = model
+    }
+}
+
 // Struct to hold Power Consumption information
 struct PowerConsumptionInfo {
     let cpuPower: Double // in watts
@@ -156,6 +184,7 @@ struct PowerConsumptionInfo {
     let totalSystemPower: Double // in watts (now represents whole system power)
     let timestamp: Date
     let isEstimate: Bool
+    let adapterInfo: PowerAdapterInfo // Power adapter information
     
     init() {
         self.cpuPower = 0.0
@@ -163,14 +192,16 @@ struct PowerConsumptionInfo {
         self.totalSystemPower = 0.0
         self.timestamp = Date()
         self.isEstimate = true
+        self.adapterInfo = PowerAdapterInfo()
     }
     
-    init(cpuPower: Double, gpuPower: Double, totalSystemPower: Double, timestamp: Date, isEstimate: Bool) {
+    init(cpuPower: Double, gpuPower: Double, totalSystemPower: Double, timestamp: Date, isEstimate: Bool, adapterInfo: PowerAdapterInfo = PowerAdapterInfo()) {
         self.cpuPower = cpuPower
         self.gpuPower = gpuPower
         self.totalSystemPower = totalSystemPower
         self.timestamp = timestamp
         self.isEstimate = isEstimate
+        self.adapterInfo = adapterInfo
     }
 }
 
@@ -1169,12 +1200,230 @@ class SystemMonitor: ObservableObject {
     
     private func getCurrentPowerConsumption() -> PowerConsumptionInfo {
         // Try macmon first
+        var basePowerInfo: PowerConsumptionInfo
+        
         if let powerData = getPowerConsumptionFromMacmon() {
-            return powerData
+            basePowerInfo = powerData
+        } else {
+            basePowerInfo = estimatePowerConsumption()
         }
         
-        // Fallback to estimation
-        return estimatePowerConsumption()
+        // Get power adapter info with current system power
+        let adapterInfo = getCurrentPowerAdapterInfo(systemPower: basePowerInfo.totalSystemPower)
+        
+        // Return updated power info with adapter data
+        return PowerConsumptionInfo(
+            cpuPower: basePowerInfo.cpuPower,
+            gpuPower: basePowerInfo.gpuPower,
+            totalSystemPower: basePowerInfo.totalSystemPower,
+            timestamp: basePowerInfo.timestamp,
+            isEstimate: basePowerInfo.isEstimate,
+            adapterInfo: adapterInfo
+        )
+    }
+    
+    // Updated method to detect power adapter information
+    private func getCurrentPowerAdapterInfo(systemPower: Double) -> PowerAdapterInfo {
+        // Only detect on laptops
+        let modelName = systemInfo.modelName.lowercased()
+        let isLaptop = modelName.contains("macbook") || 
+                      modelName.contains("air") || 
+                      batteryInfo.present
+        
+        if !isLaptop {
+            return PowerAdapterInfo()
+        }
+        
+        // Try system_profiler first for detailed info
+        if let adapterInfo = getAdapterInfoFromSystemProfiler(systemPower: systemPower) {
+            return adapterInfo
+        }
+        
+        // Try IOKit as fallback
+        return getAdapterInfoFromIOKit(systemPower: systemPower)
+    }
+    
+    // Get adapter info from system_profiler SPPowerDataType
+    private func getAdapterInfoFromSystemProfiler(systemPower: Double) -> PowerAdapterInfo? {
+        guard let output = executeCommand("/usr/sbin/system_profiler", ["SPPowerDataType"]) else {
+            return nil
+        }
+        
+        let lines = output.split(separator: "\n")
+        var wattage = 0
+        var type = "Unknown"
+        var model = "Unknown"
+        var isConnected = false
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            
+            // Look for AC Charger Information
+            if trimmedLine.contains("AC Charger Information:") {
+                isConnected = true
+            }
+            
+            // Look for wattage - various possible formats
+            if trimmedLine.contains("Wattage (W):") {
+                let components = trimmedLine.split(separator: ":")
+                if components.count > 1 {
+                    let wattageString = components[1].trimmingCharacters(in: .whitespaces)
+                    wattage = Int(wattageString) ?? 0
+                }
+            } else if trimmedLine.contains("Power Adapter:") {
+                let components = trimmedLine.split(separator: ":")
+                if components.count > 1 {
+                    model = components[1].trimmingCharacters(in: .whitespaces)
+                    
+                    // Extract wattage from model name like "96W USB-C Power Adapter"
+                    let wattagePattern = try? NSRegularExpression(pattern: "(\\d+)W", options: [])
+                    let range = NSRange(model.startIndex..<model.endIndex, in: model)
+                    if let match = wattagePattern?.firstMatch(in: model, options: [], range: range),
+                       let wattageRange = Range(match.range(at: 1), in: model) {
+                        wattage = Int(String(model[wattageRange])) ?? 0
+                    }
+                    
+                    // Determine adapter type from model
+                    if model.lowercased().contains("magsafe") {
+                        type = model.lowercased().contains("magsafe 3") ? "MagSafe 3" : "MagSafe"
+                    } else if model.lowercased().contains("usb-c") || model.lowercased().contains("usbc") {
+                        type = "USB-C"
+                    } else if model.lowercased().contains("lightning") {
+                        type = "Lightning"
+                    }
+                }
+            }
+            
+            // Look for charging status
+            if trimmedLine.contains("Connected:") && trimmedLine.contains("Yes") {
+                isConnected = true
+            }
+        }
+        
+        // If we found adapter info, calculate additional metrics
+        if isConnected && wattage > 0 {
+            let inputPower = calculateInputPower(systemPower: systemPower)
+            let efficiency = inputPower > 0 ? min((systemPower / inputPower) * 100, 100) : 0
+            
+            return PowerAdapterInfo(
+                isConnected: isConnected,
+                wattage: wattage,
+                type: type,
+                inputPower: inputPower,
+                efficiency: efficiency,
+                model: model
+            )
+        }
+        
+        return nil
+    }
+    
+    // Get adapter info from IOKit (fallback)
+    private func getAdapterInfoFromIOKit(systemPower: Double) -> PowerAdapterInfo {
+        guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+            return PowerAdapterInfo()
+        }
+        
+        guard let sources = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else {
+            return PowerAdapterInfo()
+        }
+        
+        for ps in sources {
+            guard let description = IOPSGetPowerSourceDescription(blob, ps)?.takeUnretainedValue() as? [String: Any] else {
+                continue
+            }
+            
+            let powerSource = description[kIOPSPowerSourceStateKey] as? String ?? ""
+            
+            // Check if we're on AC power (adapter connected)
+            if powerSource == kIOPSACPowerValue {
+                // Try to get adapter wattage from various keys
+                var wattage = 0
+                var type = "USB-C" // Default assumption for modern Macs
+                
+                // Try different keys that might contain adapter info
+                if let adapterWattage = description["AdapterWattage"] as? Int {
+                    wattage = adapterWattage
+                } else if let designCapacity = description["DesignCapacity"] as? Int {
+                    // Sometimes design capacity can indicate adapter wattage
+                    wattage = designCapacity
+                }
+                
+                // If we couldn't get wattage from IOKit, estimate based on system
+                if wattage == 0 {
+                    wattage = estimateAdapterWattage()
+                    type = estimateAdapterType()
+                }
+                
+                let inputPower = calculateInputPower(systemPower: systemPower)
+                let efficiency = wattage > 0 ? min((systemPower / Double(wattage)) * 100, 100) : 0
+                
+                return PowerAdapterInfo(
+                    isConnected: true,
+                    wattage: wattage,
+                    type: type,
+                    inputPower: inputPower,
+                    efficiency: efficiency,
+                    model: "\(wattage)W \(type) Power Adapter"
+                )
+            }
+        }
+        
+        return PowerAdapterInfo()
+    }
+    
+    private func estimateAdapterWattage() -> Int {
+        let modelName = systemInfo.modelName.lowercased()
+        
+        if modelName.contains("macbook air") {
+            if modelName.contains("15") {
+                return 35 // 15" MacBook Air
+            } else {
+                return 30 // 13" MacBook Air
+            }
+        } else if modelName.contains("macbook pro") {
+            if modelName.contains("16") {
+                return 140 // 16" MacBook Pro
+            } else if modelName.contains("14") {
+                return 96 // 14" MacBook Pro
+            } else if modelName.contains("13") {
+                return 67 // 13" MacBook Pro
+            }
+        }
+        
+        // Default for unknown models
+        return 67
+    }
+    
+    // Estimate adapter type based on system model and age
+    private func estimateAdapterType() -> String {
+        let modelName = systemInfo.modelName.lowercased()
+        
+        // Most modern Macs use USB-C or MagSafe 3
+        if modelName.contains("macbook pro") && (modelName.contains("14") || modelName.contains("16")) {
+            return "MagSafe 3"
+        } else if modelName.contains("macbook air") || modelName.contains("macbook pro") {
+            return "USB-C"
+        }
+        
+        return "USB-C"
+    }
+    
+    // Calculate current input power from adapter
+    private func calculateInputPower(systemPower: Double) -> Double {
+        // If we have battery info and it's charging, we can estimate input power
+        if batteryInfo.isCharging && batteryInfo.amperage > 0 && batteryInfo.voltage > 0 {
+            // Convert mA to A and mV to V, then calculate watts
+            let amperes = batteryInfo.amperage / 1000.0
+            let volts = batteryInfo.voltage / 1000.0
+            let batteryInputPower = abs(amperes * volts)
+            
+            // Add system consumption (total system power) to charging power
+            return batteryInputPower + systemPower
+        }
+        
+        // If not charging but on AC power, input power ≈ system consumption
+        return systemPower
     }
     
     private func getPowerConsumptionFromMacmon() -> PowerConsumptionInfo? {

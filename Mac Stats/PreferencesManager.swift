@@ -8,6 +8,7 @@
 import SwiftUI
 import Foundation
 import ServiceManagement
+import Combine
 
 enum NetworkUnit: Int, CaseIterable {
     case bytes = 0
@@ -34,241 +35,105 @@ enum TemperatureUnit: Int, CaseIterable {
 }
 
 class PreferencesManager: ObservableObject {
-    // Main toggle for each stat
-    @Published var showCPU: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showCPU, forKey: "showCPU")
-        }
+    // MARK: - Keys for UserDefaults
+    private enum Keys: String {
+        case showCPU = "showCPU"
+        case showCPUTemperature = "showCPUTemperature"
+        case showMemory = "showMemory"
+        case showDisk = "showDisk"
+        case showNetwork = "showNetwork"
+        case showPowerConsumption = "showPowerConsumption"
+        case showMenuBarCPU = "showMenuBarCPU"
+        case showMenuBarMemory = "showMenuBarMemory"
+        case showMenuBarDisk = "showMenuBarDisk"
+        case showMenuBarNetwork = "showMenuBarNetwork"
+        case showMenuBarUptime = "showMenuBarUptime"
+        case updateInterval = "updateInterval"
+        case powerUpdateInterval = "powerUpdateInterval"
+        case launchAtStartup = "launchAtStartup"
+        case selectedNetworkInterface = "selectedNetworkInterface"
+        case networkUnit = "networkUnit"
+        case autoScaleNetwork = "autoScaleNetwork"
+        case temperatureUnit = "temperatureUnit"
+        case showBothTemperatureUnits = "showBothTemperatureUnits"
+        case useTabbedView = "useTabbedView"
+        // Mailjet settings
+        case mailjetEmailEnabled = "mailjetEmailEnabled"
+        case mailjetFromEmail = "mailjetFromEmail"
+        case mailjetFromName = "mailjetFromName"
+        case mailjetToEmail = "mailjetToEmail"
+        // UPS and IP notification settings
+        case upsPowerChangeNotificationEnabled = "upsPowerChangeNotificationEnabled"
+        case ipChangeNotificationEnabled = "ipChangeNotificationEnabled"
+        case ipChangeNotificationInterval = "ipChangeNotificationInterval"
     }
     
-    @Published var showCPUTemperature: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showCPUTemperature, forKey: "showCPUTemperature")
-        }
-    }
-    
-    @Published var temperatureUnit: TemperatureUnit = .celsius {
-        didSet {
-            UserDefaults.standard.set(temperatureUnit.rawValue, forKey: "temperatureUnit")
-        }
-    }
-    
-    @Published var showBothTemperatureUnits: Bool = false {
-        didSet {
-            UserDefaults.standard.set(showBothTemperatureUnits, forKey: "showBothTemperatureUnits")
-        }
-    }
-
-    @Published var showMemory: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showMemory, forKey: "showMemory")
-        }
-    }
-    
-    @Published var showDisk: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showDisk, forKey: "showDisk")
-        }
-    }
-    
-    @Published var showNetwork: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showNetwork, forKey: "showNetwork")
-        }
-    }
-    
-    @Published var showPowerConsumption: Bool = UserDefaults.standard.object(forKey: "showPowerConsumption") as? Bool ?? true
-    
-    // Toggle for showing in menu bar icon
-    @Published var showMenuBarCPU: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showMenuBarCPU, forKey: "showMenuBarCPU")
-        }
-    }
-    
-    @Published var showMenuBarMemory: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showMenuBarMemory, forKey: "showMenuBarMemory")
-        }
-    }
-    
-    @Published var showMenuBarDisk: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showMenuBarDisk, forKey: "showMenuBarDisk")
-        }
-    }
-    
-    @Published var showMenuBarNetwork: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showMenuBarNetwork, forKey: "showMenuBarNetwork")
-        }
-    }
-    
-    @Published var showMenuBarUptime: Bool = false {
-        didSet {
-            UserDefaults.standard.set(showMenuBarUptime, forKey: "showMenuBarUptime")
-        }
-    }
-    
-    // Network interface settings
-    @Published var selectedNetworkInterface: String = "All" {
-        didSet {
-            UserDefaults.standard.set(selectedNetworkInterface, forKey: "selectedNetworkInterface")
-        }
-    }
-    
-    // Network unit settings
-    @Published var networkUnit: NetworkUnit = .bytes {
-        didSet {
-            UserDefaults.standard.set(networkUnit.rawValue, forKey: "networkUnit")
-        }
-    }
-    
-    @Published var autoScaleNetwork: Bool = true {
-        didSet {
-            UserDefaults.standard.set(autoScaleNetwork, forKey: "autoScaleNetwork")
-        }
-    }
-    
-    // Update interval
-    @Published var updateInterval: Double = 2.0 {
-        didSet {
-            UserDefaults.standard.set(updateInterval, forKey: "updateInterval")
-        }
-    }
-    
-    // Power consumption update interval (for macmon polling)
-    @Published var powerUpdateInterval: Double = 30.0 {
-        didSet {
-            UserDefaults.standard.set(powerUpdateInterval, forKey: "powerUpdateInterval")
-        }
-    }
-    
-    // Launch at startup
-    @Published var launchAtStartup: Bool = false {
-        didSet {
-            UserDefaults.standard.set(launchAtStartup, forKey: "launchAtStartup")
-            updateLaunchAtStartupSetting()
-        }
-    }
+    // MARK: - Published Properties
+    @Published var showCPU: Bool = true
+    @Published var showCPUTemperature: Bool = true
+    @Published var showMemory: Bool = true
+    @Published var showDisk: Bool = true
+    @Published var showNetwork: Bool = true
+    @Published var showPowerConsumption: Bool = true
+    @Published var showMenuBarCPU: Bool = true
+    @Published var showMenuBarMemory: Bool = true
+    @Published var showMenuBarDisk: Bool = false
+    @Published var showMenuBarNetwork: Bool = false
+    @Published var showMenuBarUptime: Bool = false
+    @Published var updateInterval: TimeInterval = 2.0
+    @Published var powerUpdateInterval: TimeInterval = 30.0
+    @Published var launchAtStartup: Bool = false
+    @Published var selectedNetworkInterface: String = "All"
+    @Published var networkUnit: NetworkUnit = .bytes
+    @Published var autoScaleNetwork: Bool = true
+    @Published var temperatureUnit: TemperatureUnit = .celsius
+    @Published var showBothTemperatureUnits: Bool = false
+    @Published var useTabbedView: Bool = false  // New preference for view style
     
     // Mailjet Email Notification Settings
-    @Published var mailjetEmailEnabled: Bool = false {
-        didSet {
-            UserDefaults.standard.set(mailjetEmailEnabled, forKey: "mailjetEmailEnabled")
-        }
-    }
-    
-    @Published var mailjetAPIKey: String = "" {
-        didSet {
-            // Store API key in Keychain for better security
-            KeychainHelper.save(key: "mailjetAPIKey", value: mailjetAPIKey)
-        }
-    }
-    
-    @Published var mailjetAPISecret: String = "" {
-        didSet {
-            // Store API secret in Keychain for better security
-            KeychainHelper.save(key: "mailjetAPISecret", value: mailjetAPISecret)
-        }
-    }
-    
-    @Published var mailjetFromEmail: String = "" {
-        didSet {
-            UserDefaults.standard.set(mailjetFromEmail, forKey: "mailjetFromEmail")
-        }
-    }
-    
-    @Published var mailjetFromName: String = "" {
-        didSet {
-            UserDefaults.standard.set(mailjetFromName, forKey: "mailjetFromName")
-        }
-    }
-    
-    @Published var mailjetToEmail: String = "" {
-        didSet {
-            UserDefaults.standard.set(mailjetToEmail, forKey: "mailjetToEmail")
-        }
-    }
+    @Published var mailjetEmailEnabled: Bool = false
+    @Published var mailjetAPIKey: String = ""
+    @Published var mailjetAPISecret: String = ""
+    @Published var mailjetFromEmail: String = ""
+    @Published var mailjetFromName: String = ""
+    @Published var mailjetToEmail: String = ""
     
     // UPS Power Change Notification Settings
-    @Published var upsPowerChangeNotificationEnabled: Bool = true {
-        didSet {
-            UserDefaults.standard.set(upsPowerChangeNotificationEnabled, forKey: "upsPowerChangeNotificationEnabled")
-        }
-    }
+    @Published var upsPowerChangeNotificationEnabled: Bool = true
     
     // IP Change Notification Settings
-    @Published var ipChangeNotificationEnabled: Bool = false {
-        didSet {
-            UserDefaults.standard.set(ipChangeNotificationEnabled, forKey: "ipChangeNotificationEnabled")
-        }
-    }
+    @Published var ipChangeNotificationEnabled: Bool = false
+    @Published var ipChangeNotificationInterval: Double = 300.0  // 5 minutes default
     
-    @Published var ipChangeNotificationInterval: Double = 300.0 { // 5 minutes default
-        didSet {
-            UserDefaults.standard.set(ipChangeNotificationInterval, forKey: "ipChangeNotificationInterval")
-        }
-    }
+    // MARK: - Private Properties
+    private var cancellables = Set<AnyCancellable>()
     
     init() {
-        showCPU = UserDefaults.standard.object(forKey: "showCPU") as? Bool ?? true
-        showCPUTemperature = UserDefaults.standard.object(forKey: "showCPUTemperature") as? Bool ?? true
-        
-        let temperatureUnitRaw = UserDefaults.standard.object(forKey: "temperatureUnit") as? Int ?? 0
-        temperatureUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
-        showBothTemperatureUnits = UserDefaults.standard.object(forKey: "showBothTemperatureUnits") as? Bool ?? false
-        
-        showMemory = UserDefaults.standard.object(forKey: "showMemory") as? Bool ?? true
-        showDisk = UserDefaults.standard.object(forKey: "showDisk") as? Bool ?? true
-        showNetwork = UserDefaults.standard.object(forKey: "showNetwork") as? Bool ?? true
-        
-        showMenuBarCPU = UserDefaults.standard.object(forKey: "showMenuBarCPU") as? Bool ?? true
-        showMenuBarMemory = UserDefaults.standard.object(forKey: "showMenuBarMemory") as? Bool ?? true
-        showMenuBarDisk = UserDefaults.standard.object(forKey: "showMenuBarDisk") as? Bool ?? true
-        showMenuBarNetwork = UserDefaults.standard.object(forKey: "showMenuBarNetwork") as? Bool ?? true
-        
-        selectedNetworkInterface = UserDefaults.standard.object(forKey: "selectedNetworkInterface") as? String ?? "All"
-        
-        let networkUnitRaw = UserDefaults.standard.object(forKey: "networkUnit") as? Int ?? 0
-        networkUnit = NetworkUnit(rawValue: networkUnitRaw) ?? .bytes
-        
-        autoScaleNetwork = UserDefaults.standard.object(forKey: "autoScaleNetwork") as? Bool ?? true
-        updateInterval = UserDefaults.standard.object(forKey: "updateInterval") as? Double ?? 2.0
-        powerUpdateInterval = UserDefaults.standard.object(forKey: "powerUpdateInterval") as? Double ?? 30.0
-        launchAtStartup = UserDefaults.standard.object(forKey: "launchAtStartup") as? Bool ?? false
-        
-        // Mailjet Email Notification Settings
-        mailjetEmailEnabled = UserDefaults.standard.object(forKey: "mailjetEmailEnabled") as? Bool ?? false
-        mailjetFromEmail = UserDefaults.standard.object(forKey: "mailjetFromEmail") as? String ?? ""
-        mailjetToEmail = UserDefaults.standard.object(forKey: "mailjetToEmail") as? String ?? ""
-        mailjetFromName = UserDefaults.standard.object(forKey: "mailjetFromName") as? String ?? ""
-        
-        // UPS Power Change Notification Settings
-        upsPowerChangeNotificationEnabled = UserDefaults.standard.object(forKey: "upsPowerChangeNotificationEnabled") as? Bool ?? true
-        
-        // IP Change Notification Settings
-        ipChangeNotificationEnabled = UserDefaults.standard.object(forKey: "ipChangeNotificationEnabled") as? Bool ?? false
-        ipChangeNotificationInterval = UserDefaults.standard.object(forKey: "ipChangeNotificationInterval") as? Double ?? 300.0
+        loadUserDefaults()
         
         // Retrieve credentials from Keychain
         mailjetAPIKey = KeychainHelper.load(key: "mailjetAPIKey") ?? ""
         mailjetAPISecret = KeychainHelper.load(key: "mailjetAPISecret") ?? ""
         
-        showMenuBarUptime = UserDefaults.standard.object(forKey: "showMenuBarUptime") as? Bool ?? false
+        // Setup observers for automatic saving
+        setupChangeObservers()
     }
     
     private func updateLaunchAtStartupSetting() {
         if #available(macOS 13.0, *) {
             if launchAtStartup {
                 do {
-                    try SMAppService.mainApp.register()
+                    if SMAppService.mainApp.status != .enabled {
+                        try SMAppService.mainApp.register()
+                    }
                 } catch {
                     print("Failed to register for launch at startup: \(error)")
                 }
             } else {
                 do {
-                    try SMAppService.mainApp.unregister()
+                    if SMAppService.mainApp.status == .enabled {
+                        try SMAppService.mainApp.unregister()
+                    }
                 } catch {
                     print("Failed to unregister for launch at startup: \(error)")
                 }
@@ -277,6 +142,122 @@ class PreferencesManager: ObservableObject {
     }
     
     func savePreferences() {
-        UserDefaults.standard.set(showPowerConsumption, forKey: "showPowerConsumption")
+        saveUserDefaults()
+    }
+    
+    private func saveUserDefaults() {
+        UserDefaults.standard.set(showCPU, forKey: Keys.showCPU.rawValue)
+        UserDefaults.standard.set(showCPUTemperature, forKey: Keys.showCPUTemperature.rawValue)
+        UserDefaults.standard.set(showMemory, forKey: Keys.showMemory.rawValue)
+        UserDefaults.standard.set(showDisk, forKey: Keys.showDisk.rawValue)
+        UserDefaults.standard.set(showNetwork, forKey: Keys.showNetwork.rawValue)
+        UserDefaults.standard.set(showPowerConsumption, forKey: Keys.showPowerConsumption.rawValue)
+        UserDefaults.standard.set(showMenuBarCPU, forKey: Keys.showMenuBarCPU.rawValue)
+        UserDefaults.standard.set(showMenuBarMemory, forKey: Keys.showMenuBarMemory.rawValue)
+        UserDefaults.standard.set(showMenuBarDisk, forKey: Keys.showMenuBarDisk.rawValue)
+        UserDefaults.standard.set(showMenuBarNetwork, forKey: Keys.showMenuBarNetwork.rawValue)
+        UserDefaults.standard.set(showMenuBarUptime, forKey: Keys.showMenuBarUptime.rawValue)
+        UserDefaults.standard.set(updateInterval, forKey: Keys.updateInterval.rawValue)
+        UserDefaults.standard.set(powerUpdateInterval, forKey: Keys.powerUpdateInterval.rawValue)
+        UserDefaults.standard.set(launchAtStartup, forKey: Keys.launchAtStartup.rawValue)
+        UserDefaults.standard.set(selectedNetworkInterface, forKey: Keys.selectedNetworkInterface.rawValue)
+        UserDefaults.standard.set(networkUnit.rawValue, forKey: Keys.networkUnit.rawValue)
+        UserDefaults.standard.set(autoScaleNetwork, forKey: Keys.autoScaleNetwork.rawValue)
+        UserDefaults.standard.set(temperatureUnit.rawValue, forKey: Keys.temperatureUnit.rawValue)
+        UserDefaults.standard.set(showBothTemperatureUnits, forKey: Keys.showBothTemperatureUnits.rawValue)
+        UserDefaults.standard.set(useTabbedView, forKey: Keys.useTabbedView.rawValue)
+        
+        // Mailjet email notification settings
+        UserDefaults.standard.set(mailjetEmailEnabled, forKey: Keys.mailjetEmailEnabled.rawValue)
+        UserDefaults.standard.set(mailjetFromEmail, forKey: Keys.mailjetFromEmail.rawValue)
+        UserDefaults.standard.set(mailjetFromName, forKey: Keys.mailjetFromName.rawValue)
+        UserDefaults.standard.set(mailjetToEmail, forKey: Keys.mailjetToEmail.rawValue)
+        
+        // UPS and IP notification settings
+        UserDefaults.standard.set(upsPowerChangeNotificationEnabled, forKey: Keys.upsPowerChangeNotificationEnabled.rawValue)
+        UserDefaults.standard.set(ipChangeNotificationEnabled, forKey: Keys.ipChangeNotificationEnabled.rawValue)
+        UserDefaults.standard.set(ipChangeNotificationInterval, forKey: Keys.ipChangeNotificationInterval.rawValue)
+        
+        updateLaunchAtStartupSetting()
+        
+        // Store credentials in Keychain
+        if !mailjetAPIKey.isEmpty {
+            KeychainHelper.save(key: "mailjetAPIKey", value: mailjetAPIKey)
+        }
+        
+        if !mailjetAPISecret.isEmpty {
+            KeychainHelper.save(key: "mailjetAPISecret", value: mailjetAPISecret)
+        }
+    }
+    
+    private func loadUserDefaults() {
+        showCPU = UserDefaults.standard.object(forKey: Keys.showCPU.rawValue) as? Bool ?? true
+        showCPUTemperature = UserDefaults.standard.object(forKey: Keys.showCPUTemperature.rawValue) as? Bool ?? true
+        showMemory = UserDefaults.standard.object(forKey: Keys.showMemory.rawValue) as? Bool ?? true
+        showDisk = UserDefaults.standard.object(forKey: Keys.showDisk.rawValue) as? Bool ?? true
+        showNetwork = UserDefaults.standard.object(forKey: Keys.showNetwork.rawValue) as? Bool ?? true
+        showPowerConsumption = UserDefaults.standard.object(forKey: Keys.showPowerConsumption.rawValue) as? Bool ?? true
+        showMenuBarCPU = UserDefaults.standard.object(forKey: Keys.showMenuBarCPU.rawValue) as? Bool ?? true
+        showMenuBarMemory = UserDefaults.standard.object(forKey: Keys.showMenuBarMemory.rawValue) as? Bool ?? true
+        showMenuBarDisk = UserDefaults.standard.object(forKey: Keys.showMenuBarDisk.rawValue) as? Bool ?? false
+        showMenuBarNetwork = UserDefaults.standard.object(forKey: Keys.showMenuBarNetwork.rawValue) as? Bool ?? false
+        showMenuBarUptime = UserDefaults.standard.object(forKey: Keys.showMenuBarUptime.rawValue) as? Bool ?? false
+        updateInterval = UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) : 2.0
+        powerUpdateInterval = UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) : 30.0
+        launchAtStartup = UserDefaults.standard.bool(forKey: Keys.launchAtStartup.rawValue)
+        selectedNetworkInterface = UserDefaults.standard.string(forKey: Keys.selectedNetworkInterface.rawValue) ?? "All"
+        networkUnit = NetworkUnit(rawValue: UserDefaults.standard.integer(forKey: Keys.networkUnit.rawValue)) ?? .bytes
+        autoScaleNetwork = UserDefaults.standard.object(forKey: Keys.autoScaleNetwork.rawValue) as? Bool ?? true
+        temperatureUnit = TemperatureUnit(rawValue: UserDefaults.standard.integer(forKey: Keys.temperatureUnit.rawValue)) ?? .celsius
+        showBothTemperatureUnits = UserDefaults.standard.bool(forKey: Keys.showBothTemperatureUnits.rawValue)
+        useTabbedView = UserDefaults.standard.bool(forKey: Keys.useTabbedView.rawValue)
+        
+        // Mailjet email notification settings
+        mailjetEmailEnabled = UserDefaults.standard.bool(forKey: Keys.mailjetEmailEnabled.rawValue)
+        mailjetFromEmail = UserDefaults.standard.string(forKey: Keys.mailjetFromEmail.rawValue) ?? ""
+        mailjetFromName = UserDefaults.standard.string(forKey: Keys.mailjetFromName.rawValue) ?? ""
+        mailjetToEmail = UserDefaults.standard.string(forKey: Keys.mailjetToEmail.rawValue) ?? ""
+        
+        // UPS and IP notification settings
+        upsPowerChangeNotificationEnabled = UserDefaults.standard.object(forKey: Keys.upsPowerChangeNotificationEnabled.rawValue) as? Bool ?? true
+        ipChangeNotificationEnabled = UserDefaults.standard.bool(forKey: Keys.ipChangeNotificationEnabled.rawValue)
+        ipChangeNotificationInterval = UserDefaults.standard.double(forKey: Keys.ipChangeNotificationInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.ipChangeNotificationInterval.rawValue) : 300.0
+    }
+    
+    private func setupChangeObservers() {
+        // Add observers for automatic saving when values change
+        $showCPU.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showCPUTemperature.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showMemory.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showDisk.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showPowerConsumption.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showMenuBarCPU.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showMenuBarMemory.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showMenuBarDisk.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showMenuBarNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showMenuBarUptime.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $updateInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $powerUpdateInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $launchAtStartup.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $selectedNetworkInterface.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $networkUnit.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $autoScaleNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $temperatureUnit.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $showBothTemperatureUnits.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $useTabbedView.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        
+        // Email notification settings
+        $mailjetEmailEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $mailjetAPIKey.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $mailjetAPISecret.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $mailjetFromEmail.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $mailjetFromName.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $mailjetToEmail.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        
+        // UPS and IP notification settings
+        $upsPowerChangeNotificationEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $ipChangeNotificationEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $ipChangeNotificationInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
     }
 }

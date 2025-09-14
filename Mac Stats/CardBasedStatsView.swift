@@ -743,12 +743,97 @@ struct CardBasedStatsView: View {
                         InfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
                     }
                     
+                    // Power Adapter Information (only show on laptops when adapter is connected)
+                    let adapterInfo = systemMonitor.powerConsumptionInfo.adapterInfo
+                    if adapterInfo.isConnected && adapterInfo.wattage > 0 {
+                        Divider()
+                        
+                        // Adapter model and wattage
+                        HStack {
+                            Image(systemName: getPowerAdapterIcon(for: adapterInfo.type))
+                                .foregroundColor(.green)
+                                .font(.subheadline)
+                            Text("Power Adapter")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text("\(adapterInfo.wattage)W \(adapterInfo.type)")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.green)
+                                if !adapterInfo.model.isEmpty && adapterInfo.model != "Unknown" {
+                                    Text(adapterInfo.model)
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                        
+                        // Input power and efficiency
+                        if adapterInfo.inputPower > 0 {
+                            let usagePercent = (adapterInfo.inputPower / Double(adapterInfo.wattage)) * 100
+                            
+                            HStack {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .foregroundColor(.blue)
+                                        .font(.caption)
+                                    Text("Input Power")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text(String(format: "%.1f W", adapterInfo.inputPower))
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .monospacedDigit()
+                                        .foregroundColor(.blue)
+                                    Text(String(format: "%.0f%% of capacity", usagePercent))
+                                        .font(.caption2)
+                                        .monospacedDigit()
+                                        .foregroundColor(getAdapterUsageColor(for: usagePercent))
+                                }
+                            }
+                            
+                            // Visual progress bar for adapter usage
+                            VStack(alignment: .leading, spacing: 2) {
+                                ProgressView(value: adapterInfo.inputPower, total: Double(adapterInfo.wattage))
+                                    .tint(getAdapterUsageColor(for: usagePercent))
+                                    .scaleEffect(y: 0.8)
+                            }
+                        }
+                        
+                        // Charging efficiency if available
+                        if adapterInfo.efficiency > 0 {
+                            HStack {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "speedometer")
+                                        .foregroundColor(.purple)
+                                        .font(.caption)
+                                    Text("Efficiency")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.0f%%", adapterInfo.efficiency))
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .monospacedDigit()
+                                    .foregroundColor(getEfficiencyColor(for: adapterInfo.efficiency))
+                            }
+                        }
+                    }
+                    
                     if systemMonitor.powerConsumptionInfo.isEstimate {
                         HStack {
                             Image(systemName: "info.circle")
                                 .foregroundColor(.secondary)
                                 .font(.caption)
-                            Text("Estimated based on system load")
+                            Text(adapterInfo.isConnected ? "Power data estimated" : "Estimated based on system load")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -1232,6 +1317,51 @@ struct CardBasedStatsView: View {
         formatter.dateStyle = .short
         formatter.timeStyle = .short
         return formatter.string(from: bootTime)
+    }
+    
+    private func getPowerAdapterIcon(for type: String) -> String {
+        switch type.lowercased() {
+        case "magsafe 3", "magsafe3":
+            return "cable.connector"
+        case "magsafe":
+            return "cable.connector"
+        case "usb-c", "usbc":
+            return "cable.connector.horizontal"
+        case "lightning":
+            return "bolt.fill"
+        default:
+            return "cable.connector"
+        }
+    }
+    
+    private func getAdapterUsageColor(for percentage: Double) -> Color {
+        switch percentage {
+        case 0..<50:
+            return .green
+        case 50..<75:
+            return .yellow
+        case 75..<90:
+            return .orange
+        case 90...100:
+            return .red
+        default:
+            return .gray
+        }
+    }
+    
+    private func getEfficiencyColor(for efficiency: Double) -> Color {
+        switch efficiency {
+        case 90...100:
+            return .green
+        case 70..<90:
+            return .yellow
+        case 50..<70:
+            return .orange
+        case 0..<50:
+            return .red
+        default:
+            return .gray
+        }
     }
 }
 

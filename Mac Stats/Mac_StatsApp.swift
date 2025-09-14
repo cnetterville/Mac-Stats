@@ -33,16 +33,22 @@ struct Mac_StatsApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        // Main stats window - card-based layout
+        // Main stats window - choice between card-based or tabbed layout
         Window("Mac Stats", id: "main") {
-            CardBasedStatsView()
-                .environmentObject(systemMonitor)
-                .environmentObject(preferences)
-                .environmentObject(ExternalIPManager.shared)
-                .onAppear {
-                    // Ensure SystemMonitor is properly initialized when main window appears
-                    initializeSystemMonitor()
+            Group {
+                if preferences.useTabbedView {
+                    TabbedStatsView()
+                } else {
+                    CardBasedStatsView()
                 }
+            }
+            .environmentObject(systemMonitor)
+            .environmentObject(preferences)
+            .environmentObject(ExternalIPManager.shared)
+            .onAppear {
+                // Ensure SystemMonitor is properly initialized when main window appears
+                initializeSystemMonitor()
+            }
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
