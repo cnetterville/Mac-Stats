@@ -250,7 +250,6 @@ struct TabbedStatsView: View {
             
             networkInterfacesCard
             
-            
             if !externalIPManager.externalIP.isEmpty {
                 externalIPCard
             }
@@ -276,7 +275,7 @@ struct TabbedStatsView: View {
     private var systemContent: some View {
         VStack(spacing: 12) {
             fullSystemInfoCard
-            
+			
             if preferences.showCPUTemperature {
                 temperatureCard
             }
@@ -289,7 +288,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "System Overview", icon: "desktopcomputer", color: .blue)
-                
+            
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
                     InfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
                     InfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
@@ -304,7 +303,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 8) {
                 CardHeaderView(title: "Battery", icon: getBatteryIconName(), color: getBatteryIconColor())
-                
+            
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Charge Level")
@@ -337,7 +336,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 8) {
                 CardHeaderView(title: "UPS", icon: getUPSIconName(), color: getUPSIconColor())
-                
+            
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Power Source")
@@ -371,7 +370,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
-                
+            
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -480,7 +479,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
-                
+            
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -609,7 +608,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
-                
+            
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -670,7 +669,7 @@ struct TabbedStatsView: View {
         return CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "External Drives", icon: "externaldrive.fill", color: .purple)
-                
+            
                 if !drives.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(drives, id: \.mountPoint) { drive in
@@ -702,7 +701,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Network Activity", icon: "network", color: .green)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
                     let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
@@ -839,7 +838,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "power")
@@ -964,7 +963,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Battery Status", icon: getBatteryIconName(), color: getBatteryIconColor())
-                
+            
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -1022,7 +1021,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "UPS Status", icon: getUPSIconName(), color: getUPSIconColor())
-                
+            
                 VStack(alignment: .leading, spacing: 12) {
                     if systemMonitor.upsInfo.present && systemMonitor.upsInfo.chargeLevel > 0 {
                         VStack(alignment: .leading, spacing: 4) {
@@ -1096,7 +1095,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "System Information", icon: "info.circle", color: .blue)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     InfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
                     InfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
@@ -1116,7 +1115,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "CPU Temperature", icon: "thermometer", color: .red)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Current Temperature")
@@ -1205,7 +1204,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "System Resources", icon: "gear", color: .gray)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     InfoRowView(label: "CPU Cores", value: "\(ProcessInfo.processInfo.processorCount)")
                     
@@ -1264,7 +1263,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Top Processes", icon: "list.bullet", color: .orange)
-                
+            
                 VStack(alignment: .leading, spacing: 12) {
                     if !systemMonitor.topProcesses.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
@@ -1326,7 +1325,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "Network Interface", icon: "network.badge.shield.half.filled", color: .green)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Active Interface")
@@ -1403,7 +1402,7 @@ struct TabbedStatsView: View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "External IP", icon: "globe", color: .green)
-                
+            
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("IP Address")
@@ -1632,8 +1631,8 @@ struct TabbedStatsView: View {
                 Image(systemName: getProcessIcon(for: process.name))
                     .foregroundColor(getProcessIconColor(for: process.name))
                     .font(.caption)
-                    .frame(width: 12)
-                
+            .frame(width: 12)
+            
                 Text(process.name)
                     .font(.caption)
                     .lineLimit(1)
@@ -1836,259 +1835,255 @@ struct TabbedStatsView: View {
     }
     
     private func showMacmonInstallation() {
-        let alert = NSAlert()
-        alert.messageText = "Install macmon for Accurate Temperature"
-        alert.informativeText = TemperatureMonitor.getInstallationInstructions()
-        alert.addButton(withTitle: "Copy Command")
-        alert.addButton(withTitle: "Cancel")
-        
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString("brew install macmon", forType: .string)
+        print("Opening macmon installation guide")
+        if let url = URL(string: "https://github.com/vladkens/macmon") {
+            NSWorkspace.shared.open(url)
         }
     }
-}
-
-struct CompactStatsCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-    let subtitle: String
     
-    var body: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: icon)
-                        .foregroundColor(color)
-                        .font(.title3)
-                    Text(title)
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.primary)
-                }
-                
-                Text(value)
-                    .font(.title2)
-                    .fontWeight(.bold)
-                    .foregroundColor(color)
-                
-                if !subtitle.isEmpty {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+    private func getExternalDrives() -> [ExternalDrive] {
+        var drives: [ExternalDrive] = []
+        
+        if let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: [
+            .volumeNameKey,
+            .volumeTotalCapacityKey,
+            .volumeAvailableCapacityKey,
+            .volumeIsRemovableKey,
+            .volumeIsEjectableKey,
+            .volumeIsInternalKey,
+            .volumeLocalizedFormatDescriptionKey
+        ], options: [.skipHiddenVolumes]) {
+            for volume in volumes {
+                do {
+                    let resourceValues = try volume.resourceValues(forKeys: [
+                        .volumeNameKey,
+                        .volumeTotalCapacityKey,
+                        .volumeAvailableCapacityKey,
+                        .volumeIsRemovableKey,
+                        .volumeIsEjectableKey,
+                        .volumeIsInternalKey,
+                        .volumeLocalizedFormatDescriptionKey
+                    ])
+                    
+                    let path = volume.path
+                    let name = resourceValues.volumeName ?? "Unknown"
+                    let isInternal = resourceValues.volumeIsInternal ?? true
+                    let isRemovable = resourceValues.volumeIsRemovable ?? false
+                    let isEjectable = resourceValues.volumeIsEjectable ?? false
+                    
+                    // Skip system volumes and main system drive
+                    guard !path.hasPrefix("/System") && 
+                          !path.hasPrefix("/private") &&
+                          !path.hasPrefix("/usr") &&
+                          !path.hasPrefix("/dev") &&
+                          path != "/" &&
+                          path != "/System/Volumes/Data" else {
+                        continue
+                    }
+                    
+                    // Skip simulator volumes by checking for simulator paths
+                    guard !path.contains("/Library/Developer/CoreSimulator") &&
+                          !path.contains("CoreSimulator") else {
+                        print("Skipping simulator volume: \(name) at \(path)")
+                        continue
+                    }
+                    
+                    // Skip Time Machine volumes
+                    let lowercaseName = name.lowercased()
+                    guard !lowercaseName.contains("time machine") &&
+                          !path.contains(".timemachine") &&
+                          !path.contains("TimeMachine") else {
+                        print("Skipping Time Machine volume: \(name) at \(path)")
+                        continue
+                    }
+                    
+                    // Skip simulator volumes by name
+                    guard !lowercaseName.contains("simulator") &&
+                          !lowercaseName.contains("watchos") &&
+                          !lowercaseName.contains("ios") else {
+                        print("Skipping simulator volume by name: \(name)")
+                        continue
+                    }
+                    
+                    var shouldInclude = false
+                    
+                    // Include volumes in /Volumes/ (external drives, network drives, etc.)
+                    if path.hasPrefix("/Volumes/") {
+                        // Skip Macintosh HD symlink and other system references
+                        if name != "Macintosh HD" && !path.hasSuffix("/Macintosh HD") {
+                            shouldInclude = true
+                        }
+                    }
+                    // Include cloud drives and other external mounts in user directories
+                    else if path.hasPrefix("/Users/") && 
+                            (path.contains("pCloud") || 
+                             path.contains("Dropbox") || 
+                             path.contains("Google Drive") || 
+                             path.contains("OneDrive") || 
+                             path.contains("iCloud") ||
+                             path.contains("Box") ||
+                             path.contains("Drive")) {
+                        shouldInclude = true
+                        print("Found cloud drive: \(name) at \(path)")
+                    }
+                    // For other paths, use stricter logic
+                    else if (isRemovable || isEjectable) && !isInternal {
+                        shouldInclude = true
+                    }
+                    
+                    if shouldInclude {
+                        let totalCapacity = resourceValues.volumeTotalCapacity ?? 0
+                        let availableCapacity = resourceValues.volumeAvailableCapacity ?? 0
+                        let fileSystem = resourceValues.volumeLocalizedFormatDescription ?? "Unknown"
+                        
+                        // For cloud drives, we might not have accurate capacity info, so be more lenient
+                        let isCloudDrive = path.hasPrefix("/Users/") && (path.contains("pCloud") || path.contains("Dropbox") || path.contains("Google Drive") || path.contains("OneDrive") || path.contains("iCloud") || path.contains("Box") || path.contains("Drive"))
+                        
+                        if !isCloudDrive {
+                            // Skip tiny volumes for non-cloud drives
+                            guard totalCapacity > 100_000_000 else {
+                                continue
+                            }
+                        }
+                        
+                        let totalSpaceGB = totalCapacity > 0 ? Double(totalCapacity) / (1000 * 1000 * 1000) : 0
+                        let freeSpaceGB = availableCapacity > 0 ? Double(availableCapacity) / (1000 * 1000 * 1000) : 0
+                        
+                        // For cloud drives without capacity info, show as unlimited or unknown
+                        let displayTotalSpace = totalSpaceGB > 0 ? totalSpaceGB : 0
+                        let displayFreeSpace = freeSpaceGB > 0 ? freeSpaceGB : 0
+                        
+                        let drive = ExternalDrive(
+                            mountPoint: path,
+                            displayName: name,
+                            fileSystem: fileSystem,
+                            totalSpace: displayTotalSpace,
+                            freeSpace: displayFreeSpace,
+                            isRemovable: isRemovable,
+                            isEjectable: isEjectable,
+                            deviceName: name
+                        )
+                        
+                        drives.append(drive)
+                        print("Found external drive: \(name) at \(path) (removable: \(isRemovable), ejectable: \(isEjectable), internal: \(isInternal))")
+                    }
+                    
+                } catch {
+                    print("Error getting volume info for \(volume): \(error)")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
-    }
-}
-
-// MARK: - External Drive Helper Functions
-private func getExternalDrives() -> [ExternalDrive] {
-    var drives: [ExternalDrive] = []
-    
-    if let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: [
-        .volumeNameKey,
-        .volumeTotalCapacityKey,
-        .volumeAvailableCapacityKey,
-        .volumeIsRemovableKey,
-        .volumeIsEjectableKey,
-        .volumeIsInternalKey,
-        .volumeLocalizedFormatDescriptionKey
-    ], options: [.skipHiddenVolumes]) {
         
-        for volumeURL in volumes {
-            do {
-                let resourceValues = try volumeURL.resourceValues(forKeys: [
-                    .volumeNameKey,
-                    .volumeTotalCapacityKey,
-                    .volumeAvailableCapacityKey,
-                    .volumeIsRemovableKey,
-                    .volumeIsEjectableKey,
-                    .volumeIsInternalKey,
-                    .volumeLocalizedFormatDescriptionKey
-                ])
-                
-                let mountPoint = volumeURL.path
-                let volumeName = resourceValues.volumeName ?? "Unknown"
-                
-                guard !mountPoint.contains("System/Volumes"),
-                      !mountPoint.contains(".timemachine"),
-                      !volumeName.lowercased().contains("time machine"),
-                      !volumeName.lowercased().contains("backups"),
-                      !volumeName.lowercased().contains("backup"),
-                      mountPoint != "/",
-                      mountPoint != "/System/Volumes/Data",
-                      mountPoint != "/System/Volumes/Preboot",
-                      mountPoint != "/System/Volumes/Update",
-                      mountPoint != "/private/var/vm" else {
-                    continue
-                }
-                
-                let isInternal = resourceValues.volumeIsInternal ?? false
-                let isRemovable = resourceValues.volumeIsRemovable ?? false
-                let isEjectable = resourceValues.volumeIsEjectable ?? false
-                
-                guard !isInternal || isRemovable || isEjectable else {
-                    continue
-                }
-                
-                let totalSpace = Double(resourceValues.volumeTotalCapacity ?? 0)
-                let freeSpace = Double(resourceValues.volumeAvailableCapacity ?? 0)
-                let fileSystem = resourceValues.volumeLocalizedFormatDescription ?? "Unknown"
-                
-                guard totalSpace > 100_000_000 else {
-                    continue
-                }
-                
-                let drive = ExternalDrive(
-                    mountPoint: mountPoint,
-                    displayName: volumeName,
-                    fileSystem: fileSystem,
-                    totalSpace: totalSpace,
-                    freeSpace: freeSpace,
-                    isRemovable: isRemovable,
-                    isEjectable: isEjectable,
-                    deviceName: volumeURL.lastPathComponent
-                )
-                
-                drives.append(drive)
-                
-            } catch {
-                print("Error reading volume info for \(volumeURL.path): \(error)")
-            }
-        }
+        return drives.sorted { $0.displayName < $1.displayName }
     }
     
-    return drives.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-}
-
-private func externalDriveRow(drive: ExternalDrive) -> some View {
-    VStack(alignment: .leading, spacing: 8) {
+    private func externalDriveRow(drive: ExternalDrive) -> some View {
         HStack {
-            Image(systemName: getDriveIcon(for: drive))
-                .foregroundColor(getDriveColor(for: drive))
-                .font(.title3)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(drive.displayName)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: drive.isRemovable ? "externaldrive.fill" : "internaldrive.fill")
+                        .foregroundColor(.purple)
+                        .font(.subheadline)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(drive.displayName)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .lineLimit(1)
+                        
+                        HStack(spacing: 8) {
+                            Text(drive.fileSystem)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            if drive.isEjectable {
+                                Text("Ejectable")
+                                    .font(.caption)
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+                }
                 
-                if !drive.fileSystem.isEmpty {
-                    Text(drive.fileSystem)
+                let usedSpace = drive.totalSpace - drive.freeSpace
+                let usedPercentage = (usedSpace / drive.totalSpace) * 100
+                
+                HStack {
+                    Text("Usage")
                         .font(.caption)
                         .foregroundColor(.secondary)
+                    Spacer()
+                    Text(String(format: "%.1f%% (%.1f GB / %.1f GB)", usedPercentage, usedSpace, drive.totalSpace))
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .monospacedDigit()
+                        .foregroundColor(.purple)
                 }
+                
+                ProgressView(value: usedSpace, total: drive.totalSpace)
+                    .tint(.purple)
+                    .scaleEffect(y: 0.8)
             }
             
             Spacer()
             
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(formatBytes(drive.totalSpace))
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .monospacedDigit()
-                    .foregroundColor(.primary)
-                
-                let usedPercent = drive.totalSpace > 0 ? ((drive.totalSpace - drive.freeSpace) / drive.totalSpace) * 100 : 0
-                Text("\(String(format: "%.1f", usedPercent))% used")
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundColor(.secondary)
-            }
-        }
-        
-        if drive.totalSpace > 0 {
-            let usedSpace = drive.totalSpace - drive.freeSpace
-            let usagePercent = (usedSpace / drive.totalSpace) * 100
-            
-            VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: usedSpace, total: drive.totalSpace)
-                    .tint(getDriveUsageColor(for: usagePercent))
-                    .scaleEffect(y: 0.8)
-                
-                HStack {
-                    Text("Free: \(formatBytes(drive.freeSpace))")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                    
-                    Spacer()
-                    
-                    Text("Used: \(formatBytes(usedSpace))")
-                        .font(.caption)
-                        .foregroundColor(getDriveUsageColor(for: usagePercent))
+            if drive.isEjectable {
+                Button(action: {
+                    ejectDrive(at: drive.mountPoint)
+                }) {
+                    Image(systemName: "eject")
+                        .foregroundColor(.blue)
+                        .font(.subheadline)
                 }
+                .buttonStyle(.plain)
+                .help("Eject \(drive.displayName)")
             }
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .cornerRadius(8)
     }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 6)
-    .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
-    .cornerRadius(8)
-}
-
-private func getDriveIcon(for drive: ExternalDrive) -> String {
-    let name = drive.displayName.lowercased()
-    let fileSystem = drive.fileSystem.lowercased()
     
-    if fileSystem.contains("apfs") {
-        return "externaldrive.fill"
-    } else if fileSystem.contains("hfs") {
-        return "externaldrive"
-    } else if fileSystem.contains("fat") || fileSystem.contains("exfat") || fileSystem.contains("ntfs") {
-        return "externaldrive.connected.to.line.below"
-    } else if name.contains("usb") || drive.isRemovable {
-        return "externaldrive.badge.plus"
-    } else {
-        return "externaldrive"
+    private func ejectDrive(at mountPoint: String) {
+        guard let url = URL(string: "file://\(mountPoint)") else { return }
+        
+        do {
+            try NSWorkspace.shared.unmountAndEjectDevice(at: url)
+            print("Successfully ejected drive at \(mountPoint)")
+        } catch {
+            print("Failed to eject drive at \(mountPoint): \(error)")
+        }
     }
-}
-
-private func getDriveColor(for drive: ExternalDrive) -> Color {
-    let fileSystem = drive.fileSystem.lowercased()
     
-    if fileSystem.contains("apfs") {
-        return .blue
-    } else if fileSystem.contains("hfs") {
-        return .green
-    } else if fileSystem.contains("fat") || fileSystem.contains("exfat") {
-        return .yellow
-    } else if fileSystem.contains("ntfs") {
-        return .red
-    } else {
-        return .orange
+    private func memoryPressureColor(for percentage: Double) -> Color {
+        switch percentage {
+        case 0..<60:
+            return .green
+        case 60..<80:
+            return .yellow
+        case 80...100:
+            return .red
+        default:
+            return .gray
+        }
+    }
+    
+    private func memoryPressureText(for percentage: Double) -> String {
+        switch percentage {
+        case 0..<60:
+            return "Normal"
+        case 60..<80:
+            return "Warning"
+        case 80...100:
+            return "Critical"
+        default:
+            return "Unknown"
+        }
     }
 }
 
-private func getDriveUsageColor(for percentage: Double) -> Color {
-    switch percentage {
-    case 0..<50:
-        return .green
-    case 50..<75:
-        return .yellow
-    case 75..<90:
-        return .orange
-    case 90...100:
-        return .red
-    default:
-        return .gray
-    }
-}
-
-private func formatBytes(_ bytes: Double) -> String {
-    let formatter = ByteCountFormatter()
-    formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
-    formatter.countStyle = .file
-    return formatter.string(fromByteCount: Int64(bytes))
-}
-
-// MARK: - Shared UI Components
-
+// MARK: - Card View Components 
 struct CardView<Content: View>: View {
     let content: Content
     
@@ -2151,34 +2146,6 @@ struct InfoRowView: View {
                 .monospacedDigit()
                 .foregroundColor(valueColor)
                 .multilineTextAlignment(.trailing)
-        }
-    }
-}
-
-extension TabbedStatsView {
-    private func memoryPressureColor(for percentage: Double) -> Color {
-        switch percentage {
-        case 0..<60:
-            return .green
-        case 60..<80:
-            return .yellow
-        case 80...100:
-            return .red
-        default:
-            return .gray
-        }
-    }
-    
-    private func memoryPressureText(for percentage: Double) -> String {
-        switch percentage {
-        case 0..<60:
-            return "Normal"
-        case 60..<80:
-            return "Warning"
-        case 80...100:
-            return "Critical"
-        default:
-            return "Unknown"
         }
     }
 }
