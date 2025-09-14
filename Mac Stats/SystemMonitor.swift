@@ -632,11 +632,15 @@ class SystemMonitor: ObservableObject {
                 let usage = ((user - prevUser + system - prevSystem + nice - prevNice) / total) * 100
                 // Store current values for next calculation
                 previousCPUInfo = cpuInfo
+                print("CPU Debug: Usage calculated: \(usage)%")
                 return usage
             }
             
             // Store current values for next calculation
             previousCPUInfo = cpuInfo
+            print("CPU Debug: Total is 0, first run - returning 0")
+        } else {
+            print("CPU Debug: host_statistics failed with result: \(result)")
         }
         
         return 0.0
@@ -674,7 +678,10 @@ class SystemMonitor: ObservableObject {
             let usedGB = used / Constants.gbDivisor
             let totalGB = Double(totalMemory) / Constants.gbDivisor
             
+            print("Memory Debug: Used: \(usedGB) GB, Total: \(totalGB) GB")
             return (used: usedGB, total: totalGB)
+        } else {
+            print("Memory Debug: host_statistics64 failed with result: \(result)")
         }
         
         return (used: 0.0, total: 0.0)
@@ -689,10 +696,13 @@ class SystemMonitor: ObservableObject {
                 let freeGB = Double(available) / Constants.gbDivisor
                 let totalGB = Double(total) / Constants.gbDivisor
                 
+                print("Disk Debug: Free: \(freeGB) GB, Total: \(totalGB) GB")
                 return (free: freeGB, total: totalGB)
+            } else {
+                print("Disk Debug: Resource values are nil")
             }
         } catch {
-            print("Error getting disk usage: \(error)")
+            print("Disk Debug: Error getting disk usage: \(error)")
         }
         
         return (free: 0.0, total: 0.0)
@@ -883,14 +893,20 @@ class SystemMonitor: ObservableObject {
         var bootTime = Date()
         var chipInfo = "Unknown"
         
+        print("SystemInfo Debug: Starting system info collection")
+        
         // Get model name and chip info in a single system_profiler call
         if let hardwareInfo = getHardwareInfo() {
             modelName = hardwareInfo.modelName
             chipInfo = hardwareInfo.chipInfo
+            print("SystemInfo Debug: Hardware info - Model: \(modelName), Chip: \(chipInfo)")
+        } else {
+            print("SystemInfo Debug: Failed to get hardware info")
         }
         
         // Get kernel version
         kernelVersion = executeCommand("/usr/sbin/sysctl", ["-n", "kern.version"])?.split(separator: "\n").first.map(String.init) ?? "Unknown"
+        print("SystemInfo Debug: Kernel version: \(kernelVersion)")
         
         // Get uptime using sysctl
         var mib = [CTL_KERN, KERN_BOOTTIME]
@@ -901,6 +917,9 @@ class SystemMonitor: ObservableObject {
         if result == 0 {
             bootTime = Date(timeIntervalSince1970: Double(boottime.tv_sec) + Double(boottime.tv_usec) / 1_000_000)
             uptime = Date().timeIntervalSince(bootTime)
+            print("SystemInfo Debug: Uptime: \(uptime) seconds")
+        } else {
+            print("SystemInfo Debug: Failed to get uptime, sysctl result: \(result)")
         }
         
         return SystemInfo(
@@ -1266,20 +1285,53 @@ class SystemMonitor: ObservableObject {
         task.standardOutput = pipe
         
         do {
+            print("Command Debug: Executing \(executablePath) with args: \(arguments)")
             try task.run()
             task.waitUntilExit()
             
-            guard task.terminationStatus == 0 else { return nil }
+            guard task.terminationStatus == 0 else { 
+                print("Command Debug: Command failed with status: \(task.terminationStatus)")
+                return nil 
+            }
             
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8)
+            let result = String(data: data, encoding: .utf8)
+            print("Command Debug: Command succeeded, result length: \(result?.count ?? 0)")
+            return result
         } catch {
-            print("Error executing command \(executablePath): \(error)")
+            print("Command Debug: Error executing command \(executablePath): \(error)")
             return nil
         }
     }
     
     // func getBatteryDetails() -> (cycleCount: Int, maxCapacity: Int) { return (0, 100) }
+    
+    // Debug method to test individual components
+    func testSystemCalls() {
+        print("=== SystemMonitor Debug Test ===")
+        
+        // Test CPU
+        let cpu = getCurrentCPU()
+        print("CPU Test: \(cpu)%")
+        
+        // Test Memory
+        let memory = getCurrentMemory()
+        print("Memory Test: Used=\(memory.used)GB, Total=\(memory.total)GB")
+        
+        // Test Disk
+        let disk = getCurrentDisk()
+        print("Disk Test: Free=\(disk.free)GB, Total=\(disk.total)GB")
+        
+        // Test System Info
+        let sysInfo = getCurrentSystemInfo()
+        print("System Test: Model=\(sysInfo.modelName), Chip=\(sysInfo.chipInfo)")
+        
+        // Test basic system info
+        print("macOS Version: \(ProcessInfo.processInfo.operatingSystemVersionString)")
+        print("Physical Memory: \(ProcessInfo.processInfo.physicalMemory / (1000*1000*1000))GB")
+        
+        print("=== End Debug Test ===")
+    }
     
     deinit {
         stopMonitoring()

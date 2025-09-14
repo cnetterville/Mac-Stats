@@ -28,6 +28,9 @@ struct CardBasedStatsView: View {
                         print("Refresh button pressed - forcing data refresh")
                         systemMonitor.refreshAllData()
                         externalIPManager.refreshExternalIP()
+                        
+                        // Run debug test
+                        systemMonitor.testSystemCalls()
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.title2)
@@ -99,6 +102,8 @@ struct CardBasedStatsView: View {
             print("CardBasedStatsView appeared")
             print("Debug - Current CPU: \(systemMonitor.cpuUsage)")
             print("Debug - Current Memory: \(systemMonitor.memoryUsage)")
+            print("Debug - Current Disk: \(systemMonitor.diskUsage)")
+            print("Debug - Current System Info: \(systemMonitor.systemInfo)")
             print("Debug - Initial data loaded: \(systemMonitor.initialDataLoaded)")
             
             // Force refresh if data appears to be empty
