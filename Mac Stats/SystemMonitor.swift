@@ -1113,11 +1113,16 @@ class SystemMonitor: ObservableObject {
                            (type == "InternalBattery" || type == "Internal")
             
             if isBattery {
+                // Get more accurate cycle count and max capacity using system_profiler
+                let batteryDetails = getBatteryDetails()
+                let actualCycleCount = batteryDetails.cycleCount > 0 ? batteryDetails.cycleCount : cycleCount
+                let actualMaxCapacity = batteryDetails.maxCapacity != 100 ? batteryDetails.maxCapacity : maxCapacity
+                
                 // Determine battery health based on max capacity
                 var health = "Unknown"
-                if maxCapacity >= 80 {
+                if actualMaxCapacity >= 80 {
                     health = "Good"
-                } else if maxCapacity >= 60 {
+                } else if actualMaxCapacity >= 60 {
                     health = "Fair"
                 } else {
                     health = "Poor"
@@ -1129,12 +1134,12 @@ class SystemMonitor: ObservableObject {
                     chargeLevel: chargeLevel,
                     timeRemaining: timeRemaining,
                     present: true,
-                    cycleCount: cycleCount,
+                    cycleCount: actualCycleCount,
                     health: health,
                     temperature: temperature,
                     amperage: amperage,
                     voltage: voltage,
-                    maxCapacity: maxCapacity
+                    maxCapacity: actualMaxCapacity
                 )
             }
         }
@@ -1274,8 +1279,7 @@ class SystemMonitor: ObservableObject {
         }
     }
     
-    // Placeholder methods for compatibility
-    func getBatteryDetails() -> (cycleCount: Int, maxCapacity: Int) { return (0, 100) }
+    // func getBatteryDetails() -> (cycleCount: Int, maxCapacity: Int) { return (0, 100) }
     
     deinit {
         stopMonitoring()
