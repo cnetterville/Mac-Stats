@@ -174,7 +174,7 @@ struct TabbedStatsView: View {
     
     private var overviewContent: some View {
         VStack(spacing: 12) {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
                 CompactStatsCard(
                     title: "CPU Usage",
                     value: String(format: "%.1f%%", systemMonitor.cpuUsage),
@@ -198,8 +198,9 @@ struct TabbedStatsView: View {
                     color: .purple,
                     subtitle: String(format: "%.0f GB free", systemMonitor.diskUsage.free)
                 )
-                
-                // WiFi Status Card
+            }
+            
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
                 if wifiManager.wifiInfo.isConnected {
                     CompactStatsCard(
                         title: "WiFi",
@@ -227,11 +228,19 @@ struct TabbedStatsView: View {
                 }
                 
                 CompactStatsCard(
-                    title: "Network",
+                    title: "Upload",
+                    value: "\(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).value) \(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).unit)",
+                    icon: "arrow.up.circle",
+                    color: .red,
+                    subtitle: "Network"
+                )
+                
+                CompactStatsCard(
+                    title: "Download",
                     value: "\(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).value) \(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).unit)",
                     icon: "arrow.down.circle",
                     color: .blue,
-                    subtitle: "Download"
+                    subtitle: "Network"
                 )
             }
             
@@ -1510,7 +1519,6 @@ struct TabbedStatsView: View {
                 
                 VStack(alignment: .leading, spacing: 8) {
                     if wifiManager.wifiInfo.isConnected {
-                        // Connected WiFi info
                         HStack {
                             Text("Network Name")
                                 .font(.subheadline)
@@ -1524,7 +1532,6 @@ struct TabbedStatsView: View {
                         
                         Divider()
                         
-                        // Signal strength with detailed info
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text("Signal Strength")
@@ -1544,7 +1551,6 @@ struct TabbedStatsView: View {
                                 }
                             }
                             
-                            // Signal strength progress bar with visual indicators
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
                                     Text("Quality: \(wifiManager.getSignalStrengthDescription())")
@@ -1552,7 +1558,6 @@ struct TabbedStatsView: View {
                                         .foregroundColor(.secondary)
                                     Spacer()
                                     
-                                    // Visual signal bars
                                     HStack(spacing: 2) {
                                         ForEach(0..<4) { index in
                                             Rectangle()
@@ -1572,15 +1577,10 @@ struct TabbedStatsView: View {
                         
                         Divider()
                         
-                        // Security information
-                        InfoRowView(
-                            label: "Security", 
-                            value: wifiManager.wifiInfo.securityType,
-                            valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType)
-                        )
+                        InfoRowView(label: "Security", value: wifiManager.wifiInfo.securityType, 
+                                   valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType))
                         
                     } else if !wifiManager.wifiInfo.hasPermission {
-                        // Permission required
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Image(systemName: "exclamationmark.triangle.fill")
@@ -1612,7 +1612,6 @@ struct TabbedStatsView: View {
                         }
                         
                     } else {
-                        // Not connected
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Image(systemName: "wifi.slash")
@@ -1637,7 +1636,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Refresh section
                     Divider()
                     
                     HStack {
@@ -1671,8 +1669,6 @@ struct TabbedStatsView: View {
             }
         }
     }
-    
-    // MARK: - WiFi Helper Functions
     
     private func getWiFiCardColor() -> Color {
         if wifiManager.wifiInfo.isConnected {
@@ -2133,7 +2129,6 @@ struct TabbedStatsView: View {
                     let isRemovable = resourceValues.volumeIsRemovable ?? false
                     let isEjectable = resourceValues.volumeIsEjectable ?? false
                     
-                    // Skip system volumes and main system drive
                     guard !path.hasPrefix("/System") && 
                           !path.hasPrefix("/private") &&
                           !path.hasPrefix("/usr") &&
@@ -2143,41 +2138,33 @@ struct TabbedStatsView: View {
                         continue
                     }
                     
-                    // Skip simulator volumes by checking for simulator paths
                     guard !path.contains("/Library/Developer/CoreSimulator") &&
                           !path.contains("CoreSimulator") else {
                         print("Skipping simulator volume: \(name) at \(path)")
                         continue
                     }
                     
-                    // Skip Time Machine volumes
-                    let lowercaseName = name.lowercased()
-                    guard !lowercaseName.contains("time machine") &&
+                    guard !name.lowercased().contains("time machine") &&
                           !path.contains(".timemachine") &&
                           !path.contains("TimeMachine") else {
                         print("Skipping Time Machine volume: \(name) at \(path)")
                         continue
                     }
                     
-                    // Skip simulator volumes by name
-                    guard !lowercaseName.contains("simulator") &&
-                          !lowercaseName.contains("watchos") &&
-                          !lowercaseName.contains("ios") else {
+                    guard !name.lowercased().contains("simulator") &&
+                          !name.lowercased().contains("watchos") &&
+                          !name.lowercased().contains("ios") else {
                         print("Skipping simulator volume by name: \(name)")
                         continue
                     }
                     
                     var shouldInclude = false
                     
-                    // Include volumes in /Volumes/ (external drives, network drives, etc.)
                     if path.hasPrefix("/Volumes/") {
-                        // Skip Macintosh HD symlink and other system references
                         if name != "Macintosh HD" && !path.hasSuffix("/Macintosh HD") {
                             shouldInclude = true
                         }
-                    }
-                    // Include cloud drives and other external mounts in user directories
-                    else if path.hasPrefix("/Users/") && 
+                    } else if path.hasPrefix("/Users/") && 
                             (path.contains("pCloud") || 
                              path.contains("Dropbox") || 
                              path.contains("Google Drive") || 
@@ -2187,9 +2174,7 @@ struct TabbedStatsView: View {
                              path.contains("Drive")) {
                         shouldInclude = true
                         print("Found cloud drive: \(name) at \(path)")
-                    }
-                    // For other paths, use stricter logic
-                    else if (isRemovable || isEjectable) && !isInternal {
+                    } else if (isRemovable || isEjectable) && !isInternal {
                         shouldInclude = true
                     }
                     
@@ -2198,11 +2183,9 @@ struct TabbedStatsView: View {
                         let availableCapacity = resourceValues.volumeAvailableCapacity ?? 0
                         let fileSystem = resourceValues.volumeLocalizedFormatDescription ?? "Unknown"
                         
-                        // For cloud drives, we might not have accurate capacity info, so be more lenient
                         let isCloudDrive = path.hasPrefix("/Users/") && (path.contains("pCloud") || path.contains("Dropbox") || path.contains("Google Drive") || path.contains("OneDrive") || path.contains("iCloud") || path.contains("Box") || path.contains("Drive"))
                         
                         if !isCloudDrive {
-                            // Skip tiny volumes for non-cloud drives
                             guard totalCapacity > 100_000_000 else {
                                 continue
                             }
@@ -2211,7 +2194,6 @@ struct TabbedStatsView: View {
                         let totalSpaceGB = totalCapacity > 0 ? Double(totalCapacity) / (1000 * 1000 * 1000) : 0
                         let freeSpaceGB = availableCapacity > 0 ? Double(availableCapacity) / (1000 * 1000 * 1000) : 0
                         
-                        // For cloud drives without capacity info, show as unlimited or unknown
                         let displayTotalSpace = totalSpaceGB > 0 ? totalSpaceGB : 0
                         let displayFreeSpace = freeSpaceGB > 0 ? freeSpaceGB : 0
                         
@@ -2345,7 +2327,6 @@ struct TabbedStatsView: View {
     }
 }
 
-// MARK: - Card View Components 
 struct CardView<Content: View>: View {
     let content: Content
     
