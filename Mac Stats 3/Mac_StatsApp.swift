@@ -22,8 +22,8 @@ struct Mac_StatsApp: App {
     
     var body: some Scene {
         MenuBarExtra {
-            // Simplified menu for quick access with environment access
-            MenuBarDropdownView()
+            // The content of the menu bar extra window
+            StatsMenuView()
                 .environmentObject(systemMonitor)
                 .environmentObject(preferences)
                 .environmentObject(ExternalIPManager.shared)
@@ -31,21 +31,7 @@ struct Mac_StatsApp: App {
             // The view for the menu bar icon itself
             MenuBarLabelView(imageManager: imageManager, systemMonitor: systemMonitor, preferences: preferences)
         }
-        .menuBarExtraStyle(.menu)
-
-        // Main stats window - card-based layout
-        Window("Mac Stats", id: "main") {
-            CardBasedStatsView()
-                .environmentObject(systemMonitor)
-                .environmentObject(preferences)
-                .environmentObject(ExternalIPManager.shared)
-                .onAppear {
-                    // Ensure SystemMonitor is properly initialized when main window appears
-                    initializeSystemMonitor()
-                }
-        }
-        .windowResizability(.contentSize)
-        .defaultPosition(.center)
+        .menuBarExtraStyle(.window)
 
         // Settings window
         Window("Settings", id: "settings") {
@@ -65,17 +51,6 @@ struct Mac_StatsApp: App {
         .defaultPosition(.topTrailing)
     }
     
-    private func initializeSystemMonitor() {
-        // Set preferences reference
-        systemMonitor.preferences = preferences
-        
-        // Initialize external IP manager
-        ExternalIPManager.shared.setPreferences(preferences)
-        
-        // Force a data refresh
-        systemMonitor.refreshAllData()
-    }
-    
     private func setupLaunchAtStartup() {
         if #available(macOS 13.0, *) {
             // Check if we should be registered for launch at startup
@@ -89,47 +64,6 @@ struct Mac_StatsApp: App {
                 }
             }
         }
-    }
-}
-
-// New dropdown menu view for the menu bar extra
-struct MenuBarDropdownView: View {
-    @Environment(\.openWindow) private var openWindow
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button("Open Mac Stats") {
-                openWindow(id: "main")
-                // Dismiss the menu after opening
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    NSApp.sendAction(Selector(("dismiss:")), to: nil, from: nil)
-                }
-            }
-            .keyboardShortcut("m", modifiers: .command)
-            
-            Divider()
-            
-            Button("Settings") {
-                openWindow(id: "settings")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    NSApp.sendAction(Selector(("dismiss:")), to: nil, from: nil)
-                }
-            }
-            .keyboardShortcut(",", modifiers: .command)
-            
-            Button("About Mac Stats") {
-                NSApp.orderFrontStandardAboutPanel()
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            
-            Divider()
-            
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-            .keyboardShortcut("q", modifiers: .command)
-        }
-        .padding()
     }
 }
 
