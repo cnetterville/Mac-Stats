@@ -52,6 +52,7 @@ struct TabbedStatsView: View {
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var externalIPManager: ExternalIPManager
     @EnvironmentObject var imageManager: MenuBarImageManager
+    @EnvironmentObject var wifiManager: WiFiManager
     @Environment(\.openWindow) private var openWindow
     @State private var selectedCategory: StatsCategory = .overview
     
@@ -94,6 +95,7 @@ struct TabbedStatsView: View {
                     print("Refresh button pressed - forcing data refresh")
                     systemMonitor.refreshAllData()
                     externalIPManager.refreshExternalIP()
+                    wifiManager.refreshWiFiInfo()
                     systemMonitor.testSystemCalls()
                 }) {
                     Image(systemName: "arrow.clockwise")
@@ -197,6 +199,33 @@ struct TabbedStatsView: View {
                     subtitle: String(format: "%.0f GB free", systemMonitor.diskUsage.free)
                 )
                 
+                // WiFi Status Card
+                if wifiManager.wifiInfo.isConnected {
+                    CompactStatsCard(
+                        title: "WiFi",
+                        value: wifiManager.wifiInfo.networkName,
+                        icon: "wifi",
+                        color: .green,
+                        subtitle: "\(wifiManager.wifiInfo.signalStrength) dBm"
+                    )
+                } else if !wifiManager.wifiInfo.hasPermission {
+                    CompactStatsCard(
+                        title: "WiFi",
+                        value: "Permission Required",
+                        icon: "wifi.exclamationmark",
+                        color: .orange,
+                        subtitle: "Limited Access"
+                    )
+                } else {
+                    CompactStatsCard(
+                        title: "WiFi",
+                        value: "Disconnected",
+                        icon: "wifi.slash",
+                        color: .secondary,
+                        subtitle: "Not Connected"
+                    )
+                }
+                
                 CompactStatsCard(
                     title: "Network",
                     value: "\(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).value) \(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).unit)",
@@ -247,6 +276,8 @@ struct TabbedStatsView: View {
             if preferences.showNetwork {
                 fullNetworkCard
             }
+            
+            wifiCard
             
             networkInterfacesCard
             
@@ -1465,6 +1496,237 @@ struct TabbedStatsView: View {
                     }
                 }
             }
+        }
+    }
+    
+    private var wifiCard: some View {
+        CardView {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeaderView(
+                    title: "WiFi Status", 
+                    icon: wifiManager.getWiFiIconName(), 
+                    color: getWiFiCardColor()
+                )
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    if wifiManager.wifiInfo.isConnected {
+                        // Connected WiFi info
+                        HStack {
+                            Text("Network Name")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(wifiManager.wifiInfo.networkName)
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+                        }
+                        
+                        Divider()
+                        
+                        // Signal strength with detailed info
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Signal Strength")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Text("\(wifiManager.wifiInfo.signalStrength) dBm")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .monospacedDigit()
+                                        .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                    
+                                    Text("(\(wifiManager.getSignalStrengthPercentage())%)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            // Signal strength progress bar with visual indicators
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Quality: \(wifiManager.getSignalStrengthDescription())")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    
+                                    // Visual signal bars
+                                    HStack(spacing: 2) {
+                                        ForEach(0..<4) { index in
+                                            Rectangle()
+                                                .fill(index < getSignalBars(for: wifiManager.getSignalStrengthPercentage()) ? 
+                                                     getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength) : 
+                                                     Color.secondary.opacity(0.3))
+                                                .frame(width: 4, height: CGFloat(6 + index * 2))
+                                        }
+                                    }
+                                }
+                                
+                                ProgressView(value: Double(wifiManager.getSignalStrengthPercentage()), total: 100)
+                                    .tint(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                    .scaleEffect(y: 1.2)
+                            }
+                        }
+                        
+                        Divider()
+                        
+                        // Security information
+                        InfoRowView(
+                            label: "Security", 
+                            value: wifiManager.wifiInfo.securityType,
+                            valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType)
+                        )
+                        
+                    } else if !wifiManager.wifiInfo.hasPermission {
+                        // Permission required
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.title2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Permission Required")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.orange)
+                                    Text("Additional Access Needed")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            
+                            Text("WiFi information requires additional system permissions to access detailed network information. This is normal behavior on macOS for privacy protection.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            if let errorMessage = wifiManager.wifiInfo.errorMessage {
+                                Text("Technical details: \(errorMessage)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                            }
+                        }
+                        
+                    } else {
+                        // Not connected
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "wifi.slash")
+                                    .foregroundColor(.secondary)
+                                    .font(.title2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("WiFi Disconnected")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.secondary)
+                                    Text("No Active Connection")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            
+                            Text("Connect to a WiFi network to see detailed connection information, signal strength, and security details.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    
+                    // Refresh section
+                    Divider()
+                    
+                    HStack {
+                        Button(action: {
+                            wifiManager.refreshWiFiInfo()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                                Text("Refresh WiFi Info")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("Access: \(wifiManager.wifiInfo.hasPermission ? "Full" : "Limited")")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            if wifiManager.wifiInfo.isConnected {
+                                Text("Connected")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - WiFi Helper Functions
+    
+    private func getWiFiCardColor() -> Color {
+        if wifiManager.wifiInfo.isConnected {
+            return getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength)
+        } else if !wifiManager.wifiInfo.hasPermission {
+            return .orange
+        } else {
+            return .secondary
+        }
+    }
+    
+    private func getSignalStrengthColor(for signalStrength: Int) -> Color {
+        let percentage = max(0, min(100, (signalStrength + 90) * 100 / 60))
+        switch percentage {
+        case 75...100:
+            return .green
+        case 50..<75:
+            return .yellow
+        case 25..<50:
+            return .orange
+        default:
+            return .red
+        }
+    }
+    
+    private func getSecurityColor(for securityType: String) -> Color {
+        switch securityType.lowercased() {
+        case "open":
+            return .red
+        case let type where type.contains("wpa3") || type.contains("enterprise"):
+            return .green
+        case let type where type.contains("wpa2"):
+            return .blue
+        case let type where type.contains("wpa"):
+            return .yellow
+        case "wep":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
+    
+    private func getSignalBars(for percentage: Int) -> Int {
+        switch percentage {
+        case 75...100:
+            return 4
+        case 50..<75:
+            return 3
+        case 25..<50:
+            return 2
+        case 10..<25:
+            return 1
+        default:
+            return 0
         }
     }
     

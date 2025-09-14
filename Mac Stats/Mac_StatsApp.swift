@@ -14,6 +14,7 @@ struct Mac_StatsApp: App {
     @StateObject private var systemMonitor = SystemMonitor()
     @StateObject private var preferences = PreferencesManager()
     @StateObject private var imageManager = MenuBarImageManager()
+    @StateObject private var wifiManager = WiFiManager()
     
     init() {
         // Handle launch at startup registration
@@ -27,6 +28,7 @@ struct Mac_StatsApp: App {
                 .environmentObject(systemMonitor)
                 .environmentObject(preferences)
                 .environmentObject(ExternalIPManager.shared)
+                .environmentObject(wifiManager)
         } label: {
             // The view for the menu bar icon itself
             MenuBarLabelView(imageManager: imageManager, systemMonitor: systemMonitor, preferences: preferences)
@@ -47,6 +49,7 @@ struct Mac_StatsApp: App {
             .environmentObject(systemMonitor)
             .environmentObject(preferences)
             .environmentObject(ExternalIPManager.shared)
+            .environmentObject(wifiManager)
             .onAppear {
                 // Ensure SystemMonitor is properly initialized when main window appears
                 initializeSystemMonitor()
@@ -61,6 +64,7 @@ struct Mac_StatsApp: App {
                 .environmentObject(preferences)
                 .environmentObject(systemMonitor)
                 .environmentObject(ExternalIPManager.shared)
+                .environmentObject(wifiManager)
                 .frame(width: 450, height: 600)
                 .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
                     // Ensure settings window stays prominent
@@ -79,6 +83,9 @@ struct Mac_StatsApp: App {
         
         // Initialize external IP manager
         ExternalIPManager.shared.setPreferences(preferences)
+        
+        // Initialize WiFi manager
+        wifiManager.refreshWiFiInfo()
         
         // Force a data refresh
         systemMonitor.refreshAllData()
@@ -175,7 +182,6 @@ struct MenuBarLabelView: View {
                 }
                 .store(in: &cancellables)
             
-            // Subscribe to preference changes
             preferences.$updateInterval
                 .sink { newValue in
                     systemMonitor.updateMonitoringInterval(newValue)

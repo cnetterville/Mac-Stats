@@ -11,6 +11,7 @@ struct CardBasedStatsView: View {
     @EnvironmentObject var systemMonitor: SystemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var externalIPManager: ExternalIPManager
+    @EnvironmentObject var wifiManager: WiFiManager
     @Environment(\.openWindow) private var openWindow
     
     var body: some View {
@@ -28,6 +29,7 @@ struct CardBasedStatsView: View {
                         print("Refresh button pressed - forcing data refresh")
                         systemMonitor.refreshAllData()
                         externalIPManager.refreshExternalIP()
+                        wifiManager.refreshWiFiInfo()
                         
                         // Run debug test
                         systemMonitor.testSystemCalls()
@@ -70,6 +72,9 @@ struct CardBasedStatsView: View {
                         } else if systemMonitor.upsInfo.present && systemMonitor.upsInfo.name != "Power Device" {
                             upsCard()
                         }
+                        
+                        // WiFi
+                        wifiCard()
                     }
                     .frame(maxWidth: .infinity)
                     
@@ -79,12 +84,10 @@ struct CardBasedStatsView: View {
                         if preferences.showCPU {
                             cpuCard()
                         }
-                        
                         // Network
                         if preferences.showNetwork {
                             networkCard()
                         }
-                        
                         // Power Consumption
                         if preferences.showPowerConsumption && systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
                             powerConsumptionCard()
@@ -198,7 +201,7 @@ struct CardBasedStatsView: View {
                                 let maxUsage = systemMonitor.cpuHistory.max() ?? 0
                                 
                                 VStack(alignment: .trailing, spacing: 1) {
-                                    Text("Avg: \(String(format: "%.1f%%", avgUsage))")
+                                    Text("Avg: \(String(format: "*.1f%%", avgUsage))")
                                         .font(.caption)
                                         .monospacedDigit()
                                         .foregroundColor(.secondary)
@@ -848,6 +851,144 @@ struct CardBasedStatsView: View {
         }
     }
     
+    private func wifiCard() -> some View {
+        CardView {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeaderView(
+                    title: "WiFi Status", 
+                    icon: wifiManager.getWiFiIconName(), 
+                    color: getWiFiCardColor()
+                )
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    if wifiManager.wifiInfo.isConnected {
+                        // Connected WiFi info
+                        HStack {
+                            Text("Network")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(wifiManager.wifiInfo.networkName)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+                        }
+                        
+                        HStack {
+                            Text("Signal Strength")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Text("\(wifiManager.wifiInfo.signalStrength) dBm")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .monospacedDigit()
+                                    .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                
+                                Text("(\(wifiManager.getSignalStrengthPercentage())%)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        
+                        // Signal strength progress bar
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Signal Quality")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(wifiManager.getSignalStrengthDescription())
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                            }
+                            
+                            ProgressView(value: Double(wifiManager.getSignalStrengthPercentage()), total: 100)
+                                .tint(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                .scaleEffect(y: 1.2)
+                        }
+                        
+                        InfoRowView(
+                            label: "Security", 
+                            value: wifiManager.wifiInfo.securityType,
+                            valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType)
+                        )
+                        
+                    } else if !wifiManager.wifiInfo.hasPermission {
+                        // Permission required
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.subheadline)
+                                Text("Permission Required")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            Text("WiFi information requires additional system permissions to access network details.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            if let errorMessage = wifiManager.wifiInfo.errorMessage {
+                                Text(errorMessage)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                            }
+                        }
+                        
+                    } else {
+                        // Not connected
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "wifi.slash")
+                                    .foregroundColor(.secondary)
+                                    .font(.subheadline)
+                                Text("Not Connected")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Text("Connect to a WiFi network to see detailed information.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    // Refresh button and status
+                    Divider()
+                    
+                    HStack {
+                        Button(action: {
+                            wifiManager.refreshWiFiInfo()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                                Text("Refresh")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+                        
+                        Spacer()
+                        
+                        Text("Status: \(wifiManager.wifiInfo.hasPermission ? "Active" : "Limited")")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+    }
+    
     // MARK: - Enhanced Helper Views
     
     private func enhancedProcessRowView(process: SystemProcessInfo, isCPUView: Bool) -> some View {
@@ -883,6 +1024,47 @@ struct CardBasedStatsView: View {
     }
     
     // MARK: - Helper Functions
+    
+    private func getWiFiCardColor() -> Color {
+        if wifiManager.wifiInfo.isConnected {
+            return getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength)
+        } else if !wifiManager.wifiInfo.hasPermission {
+            return .orange
+        } else {
+            return .secondary
+        }
+    }
+    
+    private func getSignalStrengthColor(for signalStrength: Int) -> Color {
+        let percentage = max(0, min(100, (signalStrength + 90) * 100 / 60))
+        switch percentage {
+        case 75...100:
+            return .green
+        case 50..<75:
+            return .yellow
+        case 25..<50:
+            return .orange
+        default:
+            return .red
+        }
+    }
+    
+    private func getSecurityColor(for securityType: String) -> Color {
+        switch securityType.lowercased() {
+        case "open":
+            return .red
+        case let type where type.contains("wpa3") || type.contains("enterprise"):
+            return .green
+        case let type where type.contains("wpa2"):
+            return .blue
+        case let type where type.contains("wpa"):
+            return .yellow
+        case "wep":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
     
     private func getProcessIcon(for processName: String) -> String {
         let lowercaseName = processName.lowercased()
