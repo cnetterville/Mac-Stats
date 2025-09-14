@@ -27,6 +27,9 @@ class MenuBarImageManager: ObservableObject {
     // Cache the last image to avoid unnecessary updates
     private var cachedImageData: Data?
     
+    // Add a flag to temporarily disable updates during tab transitions
+    private var updatesDisabled = false
+    
     // Default initializer for deferred setup
     init() {}
     
@@ -40,7 +43,9 @@ class MenuBarImageManager: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.scheduleDelayedUpdate()
+                // Only schedule updates if not disabled
+                guard let self = self, !self.updatesDisabled else { return }
+                self.scheduleDelayedUpdate()
             }
             .store(in: &cancellables)
         
@@ -48,7 +53,9 @@ class MenuBarImageManager: ObservableObject {
             .debounce(for: .milliseconds(800), scheduler: DispatchQueue.main) // Even longer delay for preferences
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.scheduleDelayedUpdate()
+                // Only schedule updates if not disabled
+                guard let self = self, !self.updatesDisabled else { return }
+                self.scheduleDelayedUpdate()
             }
             .store(in: &cancellables)
             
@@ -56,20 +63,33 @@ class MenuBarImageManager: ObservableObject {
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.scheduleDelayedUpdate()
+                // Only schedule updates if not disabled
+                guard let self = self, !self.updatesDisabled else { return }
+                self.scheduleDelayedUpdate()
             }
             .store(in: &cancellables)
     }
     
+    // Temporarily disable updates (useful during tab transitions)
+    func temporarilyDisableUpdates() {
+        updatesDisabled = true
+        
+        // Re-enable after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.updatesDisabled = false
+        }
+    }
+    
     // Explicitly trigger an image update
     func forceImageUpdate() {
+        guard !updatesDisabled else { return }
         scheduleDelayedUpdate()
     }
     
     // Schedule a delayed update to ensure we're completely outside any view update cycle
     private func scheduleDelayedUpdate() {
-        // Prevent recursive calls
-        guard !isUpdating else { return }
+        // Prevent recursive calls or updates when disabled
+        guard !isUpdating && !updatesDisabled else { return }
         
         // Cancel any existing timer
         updateTimer?.invalidate()
@@ -84,8 +104,8 @@ class MenuBarImageManager: ObservableObject {
     
     @MainActor
     private func updateMenuBarImage() {
-        // Prevent recursive calls
-        guard !isUpdating else { return }
+        // Prevent recursive calls or updates when disabled
+        guard !isUpdating && !updatesDisabled else { return }
         isUpdating = true
         
         defer { 
@@ -129,7 +149,7 @@ class MenuBarImageManager: ObservableObject {
         
         // Create view and generate snapshot in isolated context
         Task.detached { [weak self, systemMonitor, preferences] in
-            guard let self = self else { return }
+            guard let self = self, !self.updatesDisabled else { return }
             
             await MainActor.run {
                 let view = MenuBarIconView()
@@ -144,15 +164,16 @@ class MenuBarImageManager: ObservableObject {
                 
                 // Convert to data for comparison
                 if let newImageData = snapshot?.tiffRepresentation {
-                    // Only update if the image actually changed
-                    if newImageData != self.cachedImageData {
+                    // Only update if the image actually changed and updates aren't disabled
+                    if newImageData != self.cachedImageData && !self.updatesDisabled {
                         self.cachedImageData = newImageData
                         
                         // Schedule the actual publishing outside of any potential view context
                         Task.detached {
                             try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
                             await MainActor.run { [weak self] in
-                                self?.menuBarImage = snapshot
+                                guard let self = self, !self.updatesDisabled else { return }
+                                self.menuBarImage = snapshot
                             }
                         }
                     }

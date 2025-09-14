@@ -1,53 +1,4 @@
 import SwiftUI
-import CoreWLAN
-
-// MARK: - WiFi Info Structure
-private struct WiFiInfo {
-    let isConnected: Bool
-    let ssid: String
-    let bssid: String
-    let rssi: Int 
-    let noise: Int 
-    let channel: String
-    let channelWidth: String
-    let phyMode: String 
-    let security: String
-    let maxRate: String 
-    let actualRate: String 
-    let quality: String 
-    
-    init() {
-        self.isConnected = false
-        self.ssid = ""
-        self.bssid = ""
-        self.rssi = 0
-        self.noise = 0
-        self.channel = ""
-        self.channelWidth = ""
-        self.phyMode = ""
-        self.security = ""
-        self.maxRate = ""
-        self.actualRate = ""
-        self.quality = "0%"
-    }
-    
-    init(isConnected: Bool, ssid: String, bssid: String, rssi: Int, noise: Int, 
-         channel: String, channelWidth: String, phyMode: String, security: String,
-         maxRate: String, actualRate: String, quality: String) {
-        self.isConnected = isConnected
-        self.ssid = ssid
-        self.bssid = bssid
-        self.rssi = rssi
-        self.noise = noise
-        self.channel = channel
-        self.channelWidth = channelWidth
-        self.phyMode = phyMode
-        self.security = security
-        self.maxRate = maxRate
-        self.actualRate = actualRate
-        self.quality = quality
-    }
-}
 
 // MARK: - External Drive Structure
 private struct ExternalDrive: Equatable {
@@ -100,6 +51,7 @@ struct TabbedStatsView: View {
     @EnvironmentObject var systemMonitor: SystemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var externalIPManager: ExternalIPManager
+    @EnvironmentObject var imageManager: MenuBarImageManager
     @Environment(\.openWindow) private var openWindow
     @State private var selectedCategory: StatsCategory = .overview
     
@@ -174,6 +126,8 @@ struct TabbedStatsView: View {
     
     private func categoryButton(for category: StatsCategory) -> some View {
         Button(action: {
+            // Temporarily disable menu bar updates during tab transition to prevent SwiftUI warnings
+            imageManager.temporarilyDisableUpdates()
             selectedCategory = category
         }) {
             HStack(spacing: 6) {
@@ -296,7 +250,6 @@ struct TabbedStatsView: View {
             
             networkInterfacesCard
             
-            wifiStatsCard
             
             if !externalIPManager.externalIP.isEmpty {
                 externalIPCard
@@ -828,7 +781,7 @@ struct TabbedStatsView: View {
                                 Text("Peak Speeds")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                
+                            
                                 HStack {
                                     if let maxUpload = systemMonitor.uploadHistory.max() {
                                         let maxUploadFormatted = NetworkFormatter.formatNetworkValue(maxUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
@@ -837,7 +790,7 @@ struct TabbedStatsView: View {
                                             .monospacedDigit()
                                             .foregroundColor(.red)
                                     }
-                                    
+                            
                                     if let maxDownload = systemMonitor.downloadHistory.max() {
                                         let maxDownloadFormatted = NetworkFormatter.formatNetworkValue(maxDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
                                         Text("↓ \(maxDownloadFormatted.value) \(maxDownloadFormatted.unit)")
@@ -854,7 +807,7 @@ struct TabbedStatsView: View {
                                 Text("Average")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                
+                            
                                 HStack {
                                     if !systemMonitor.uploadHistory.isEmpty {
                                         let avgUpload = systemMonitor.uploadHistory.reduce(0, +) / Double(systemMonitor.uploadHistory.count)
@@ -864,7 +817,7 @@ struct TabbedStatsView: View {
                                             .monospacedDigit()
                                             .foregroundColor(.red)
                                     }
-                                    
+                            
                                     if !systemMonitor.downloadHistory.isEmpty {
                                         let avgDownload = systemMonitor.downloadHistory.reduce(0, +) / Double(systemMonitor.downloadHistory.count)
                                         let avgDownloadFormatted = NetworkFormatter.formatNetworkValue(avgDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
@@ -1278,7 +1231,7 @@ struct TabbedStatsView: View {
                                 Text("5m: \(String(format: "%.2f", loadAvg[1]))")
                                     .font(.caption)
                                     .monospacedDigit()
-                                Text("15m: \(String(format: "*.2f", loadAvg[2]))")
+                                Text("15m: \(String(format: "%.2f", loadAvg[2]))")
                                     .font(.caption)
                                     .monospacedDigit()
                             }
@@ -1513,220 +1466,6 @@ struct TabbedStatsView: View {
                     }
                 }
             }
-        }
-    }
-    
-    private var wifiStatsCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "WiFi Statistics", icon: "wifi", color: .blue)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    let wifiInfo = getWiFiInfo()
-                    
-                    if wifiInfo.isConnected {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text("Network Name")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(wifiInfo.ssid)
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.primary)
-                            }
-                            
-                            HStack {
-                                Text("Signal Strength")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                HStack(spacing: 6) {
-                                    Image(systemName: getWiFiSignalIcon(rssi: wifiInfo.rssi))
-                                        .foregroundColor(getWiFiSignalColor(rssi: wifiInfo.rssi))
-                                        .font(.subheadline)
-                                    Text("\(wifiInfo.rssi) dBm")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(getWiFiSignalColor(rssi: wifiInfo.rssi))
-                                    Text("(\(wifiInfo.quality))")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                        
-                        Divider()
-                        
-                        VStack(alignment: .leading, spacing: 6) {
-                            if !wifiInfo.channel.isEmpty {
-                                InfoRowView(label: "Channel", value: "\(wifiInfo.channel) (\(wifiInfo.channelWidth))")
-                            }
-                            
-                            if !wifiInfo.phyMode.isEmpty {
-                                InfoRowView(label: "Protocol", value: wifiInfo.phyMode)
-                            }
-                            
-                            if !wifiInfo.security.isEmpty {
-                                InfoRowView(label: "Security", value: wifiInfo.security)
-                            }
-                            
-                            if !wifiInfo.actualRate.isEmpty {
-                                InfoRowView(label: "Data Rate", value: wifiInfo.actualRate)
-                            }
-                            
-                            if !wifiInfo.maxRate.isEmpty {
-                                InfoRowView(label: "Max Rate", value: wifiInfo.maxRate, valueColor: .secondary)
-                            }
-                        }
-                        
-                        if wifiInfo.noise != 0 {
-                            Divider()
-                            
-                            HStack {
-                                Text("Noise Level")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text("\(wifiInfo.noise) dBm")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            if wifiInfo.rssi != 0 && wifiInfo.noise != 0 {
-                                let snr = wifiInfo.rssi - wifiInfo.noise
-                                HStack {
-                                    Text("Signal-to-Noise")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    Text("\(snr) dB")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(getSNRColor(snr: snr))
-                                }
-                            }
-                        }
-                        
-                        if !wifiInfo.bssid.isEmpty {
-                            Divider()
-                            
-                            HStack {
-                                Text("BSSID")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(wifiInfo.bssid)
-                                    .font(.caption)
-                                    .monospacedDigit()
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    } else {
-                        HStack {
-                            Image(systemName: "wifi.slash")
-                                .foregroundColor(.secondary)
-                                .font(.title2)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("WiFi Not Connected")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Text("Connect to a WiFi network to see statistics")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 8)
-                    }
-                }
-            }
-        }
-    }
-    
-    private func getWiFiInfo() -> WiFiInfo {
-        // Try CoreWLAN first
-        if let coreWLANInfo = getBasicWiFiInfo() {
-            return coreWLANInfo
-        }
-        
-        // Return empty if no connection detected
-        return WiFiInfo()
-    }
-    
-    private func getBasicWiFiInfo() -> WiFiInfo? {
-        guard let interfaces = CWWiFiClient.shared().interfaces() else {
-            return nil
-        }
-        
-        for interface in interfaces {
-            if interface.powerOn(),
-               let ssid = interface.ssid(),
-               !ssid.isEmpty {
-                
-                return WiFiInfo(
-                    isConnected: true,
-                    ssid: ssid,
-                    bssid: interface.bssid() ?? "",
-                    rssi: Int(interface.rssiValue()),
-                    noise: Int(interface.noiseMeasurement()),
-                    channel: String(interface.wlanChannel()?.channelNumber ?? 0),
-                    channelWidth: "",
-                    phyMode: "",
-                    security: "",
-                    maxRate: "",
-                    actualRate: "\(Int(interface.transmitRate())) Mbps",
-                    quality: calculateSignalQuality(rssi: Int(interface.rssiValue()))
-                )
-            }
-        }
-        
-        return nil
-    }
-    
-    private func getWiFiSignalIcon(rssi: Int) -> String {
-        if rssi == 0 {
-            return "wifi.slash"
-        } else if rssi >= -30 {
-            return "wifi"
-        } else if rssi >= -67 {
-            return "wifi"
-        } else if rssi >= -70 {
-            return "wifi"
-        } else if rssi >= -80 {
-            return "wifi"
-        } else {
-            return "wifi"
-        }
-    }
-    
-    private func getWiFiSignalColor(rssi: Int) -> Color {
-        if rssi == 0 {
-            return .gray
-        } else if rssi >= -30 {
-            return .green
-        } else if rssi >= -67 {
-            return .green
-        } else if rssi >= -70 {
-            return .yellow
-        } else if rssi >= -80 {
-            return .orange
-        } else {
-            return .red
-        }
-    }
-    
-    private func getSNRColor(snr: Int) -> Color {
-        if snr >= 25 {
-            return .green
-        } else if snr >= 15 {
-            return .yellow
-        } else if snr >= 10 {
-            return .orange
-        } else {
-            return .red
         }
     }
     
@@ -2441,28 +2180,5 @@ extension TabbedStatsView {
         default:
             return "Unknown"
         }
-    }
-    
-    private func calculateSignalQuality(rssi: Int) -> String {
-        if rssi == 0 {
-            return "0%"
-        }
-        
-        let quality: Int
-        if rssi >= -30 {
-            quality = 100
-        } else if rssi >= -67 {
-            quality = Int(2 * (rssi + 100))
-        } else if rssi >= -70 {
-            quality = Int((rssi + 100) * 2)
-        } else if rssi >= -80 {
-            quality = Int((rssi + 100) * 2)
-        } else if rssi >= -90 {
-            quality = Int((rssi + 100))
-        } else {
-            quality = 0
-        }
-        
-        return "\(max(0, min(100, quality)))%"
     }
 }

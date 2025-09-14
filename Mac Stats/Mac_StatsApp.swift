@@ -38,8 +38,10 @@ struct Mac_StatsApp: App {
             Group {
                 if preferences.useTabbedView {
                     TabbedStatsView()
+                        .environmentObject(imageManager) // Add imageManager as environment object
                 } else {
                     CardBasedStatsView()
+                        .environmentObject(imageManager) // Add imageManager as environment object
                 }
             }
             .environmentObject(systemMonitor)
