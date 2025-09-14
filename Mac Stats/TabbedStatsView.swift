@@ -1,11 +1,69 @@
-//
-//  TabbedStatsView.swift
-//  Mac Stats
-//
-//  Created by Curtis Netterville on 8/29/25.
-//
-
 import SwiftUI
+import CoreWLAN
+
+// MARK: - WiFi Info Structure
+private struct WiFiInfo {
+    let isConnected: Bool
+    let ssid: String
+    let bssid: String
+    let rssi: Int 
+    let noise: Int 
+    let channel: String
+    let channelWidth: String
+    let phyMode: String 
+    let security: String
+    let maxRate: String 
+    let actualRate: String 
+    let quality: String 
+    
+    init() {
+        self.isConnected = false
+        self.ssid = ""
+        self.bssid = ""
+        self.rssi = 0
+        self.noise = 0
+        self.channel = ""
+        self.channelWidth = ""
+        self.phyMode = ""
+        self.security = ""
+        self.maxRate = ""
+        self.actualRate = ""
+        self.quality = "0%"
+    }
+    
+    init(isConnected: Bool, ssid: String, bssid: String, rssi: Int, noise: Int, 
+         channel: String, channelWidth: String, phyMode: String, security: String,
+         maxRate: String, actualRate: String, quality: String) {
+        self.isConnected = isConnected
+        self.ssid = ssid
+        self.bssid = bssid
+        self.rssi = rssi
+        self.noise = noise
+        self.channel = channel
+        self.channelWidth = channelWidth
+        self.phyMode = phyMode
+        self.security = security
+        self.maxRate = maxRate
+        self.actualRate = actualRate
+        self.quality = quality
+    }
+}
+
+// MARK: - External Drive Structure
+private struct ExternalDrive: Equatable {
+    let mountPoint: String
+    let displayName: String
+    let fileSystem: String
+    let totalSpace: Double
+    let freeSpace: Double
+    let isRemovable: Bool
+    let isEjectable: Bool
+    let deviceName: String
+    
+    static func == (lhs: ExternalDrive, rhs: ExternalDrive) -> Bool {
+        return lhs.mountPoint == rhs.mountPoint
+    }
+}
 
 enum StatsCategory: String, CaseIterable {
     case overview = "Overview"
@@ -47,13 +105,10 @@ struct TabbedStatsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             headerView
             
-            // Category Picker
             categoryPicker
             
-            // Content
             ScrollView {
                 LazyVStack(spacing: 12) {
                     contentForCategory(selectedCategory)
@@ -74,7 +129,6 @@ struct TabbedStatsView: View {
         }
     }
     
-    // MARK: - Header
     private var headerView: some View {
         HStack {
             Text("Mac Stats")
@@ -105,7 +159,6 @@ struct TabbedStatsView: View {
         .background(Color(NSColor.controlBackgroundColor))
     }
     
-    // MARK: - Category Picker
     private var categoryPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -145,7 +198,6 @@ struct TabbedStatsView: View {
         .buttonStyle(.plain)
     }
     
-    // MARK: - Content for Categories
     @ViewBuilder
     private func contentForCategory(_ category: StatsCategory) -> some View {
         switch category {
@@ -164,64 +216,44 @@ struct TabbedStatsView: View {
         }
     }
     
-    // MARK: - Overview Content
     private var overviewContent: some View {
         VStack(spacing: 12) {
-            // Quick stats grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-                // CPU Summary
-                if preferences.showCPU {
-                    CompactStatsCard(
-                        title: "CPU Usage",
-                        value: String(format: "%.1f%%", systemMonitor.cpuUsage),
-                        icon: "cpu",
-                        color: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
-                        subtitle: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo
-                    )
-                }
+                CompactStatsCard(
+                    title: "CPU Usage",
+                    value: String(format: "%.1f%%", systemMonitor.cpuUsage),
+                    icon: "cpu",
+                    color: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
+                    subtitle: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo
+                )
                 
-                // Memory Summary
-                if preferences.showMemory {
-                    let memoryPercent = (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100
-                    CompactStatsCard(
-                        title: "Memory Usage",
-                        value: String(format: "%.1f%%", memoryPercent),
-                        icon: "memorychip",
-                        color: memoryUsageColor(for: memoryPercent),
-                        subtitle: String(format: "%.1f / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total)
-                    )
-                }
+                CompactStatsCard(
+                    title: "Memory Usage",
+                    value: String(format: "%.1f%%", systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100),
+                    icon: "memorychip",
+                    color: memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100),
+                    subtitle: String(format: "%.1f / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total)
+                )
                 
-                // Disk Summary
-                if preferences.showDisk {
-                    let diskPercent = ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100
-                    CompactStatsCard(
-                        title: "Disk Usage",
-                        value: String(format: "%.1f%%", diskPercent),
-                        icon: "internaldrive",
-                        color: .purple,
-                        subtitle: String(format: "%.0f GB free", systemMonitor.diskUsage.free)
-                    )
-                }
+                CompactStatsCard(
+                    title: "Disk Usage",
+                    value: String(format: "%.1f%%", ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100),
+                    icon: "internaldrive",
+                    color: .purple,
+                    subtitle: String(format: "%.0f GB free", systemMonitor.diskUsage.free)
+                )
                 
-                // Network Summary
-                if preferences.showNetwork {
-                    let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
-                    let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                    CompactStatsCard(
-                        title: "Network",
-                        value: "\(downloadFormatted.value) \(downloadFormatted.unit)",
-                        icon: "arrow.down.circle",
-                        color: .blue,
-                        subtitle: "Download"
-                    )
-                }
+                CompactStatsCard(
+                    title: "Network",
+                    value: "\(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).value) \(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).unit)",
+                    icon: "arrow.down.circle",
+                    color: .blue,
+                    subtitle: "Download"
+                )
             }
             
-            // System Overview Card
             systemOverviewCard
             
-            // Quick Battery/UPS Status
             if systemMonitor.batteryInfo.present {
                 quickBatteryCard
             } else if systemMonitor.upsInfo.present && systemMonitor.upsInfo.name != "Power Device" {
@@ -230,7 +262,6 @@ struct TabbedStatsView: View {
         }
     }
     
-    // MARK: - Performance Content
     private var performanceContent: some View {
         VStack(spacing: 12) {
             if preferences.showCPU {
@@ -241,45 +272,38 @@ struct TabbedStatsView: View {
                 fullMemoryCard
             }
             
-            // Combined processes card
             if !systemMonitor.topProcesses.isEmpty || !systemMonitor.topMemoryProcesses.isEmpty {
                 processesCard
             }
         }
     }
     
-    // MARK: - Storage Content
     private var storageContent: some View {
         VStack(spacing: 12) {
             if preferences.showDisk {
                 fullDiskCard
             }
             
-            // Future: Add more storage-related cards here
-            // - Individual disk info
-            // - Network attached storage
-            // - External drives
+            externalDrivesCard
         }
     }
     
-    // MARK: - Network Content
     private var networkContent: some View {
         VStack(spacing: 12) {
             if preferences.showNetwork {
                 fullNetworkCard
             }
             
-            // Network interfaces card
             networkInterfacesCard
             
-            // External IP card
+            wifiStatsCard
+            
             if !externalIPManager.externalIP.isEmpty {
                 externalIPCard
             }
         }
     }
     
-    // MARK: - Power Content
     private var powerContent: some View {
         VStack(spacing: 12) {
             if preferences.showPowerConsumption && systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
@@ -296,7 +320,6 @@ struct TabbedStatsView: View {
         }
     }
     
-    // MARK: - System Content
     private var systemContent: some View {
         VStack(spacing: 12) {
             fullSystemInfoCard
@@ -305,12 +328,9 @@ struct TabbedStatsView: View {
                 temperatureCard
             }
             
-            // System resources card
             systemResourcesCard
         }
     }
-    
-    // MARK: - Card Implementations
     
     private var systemOverviewCard: some View {
         CardView {
@@ -394,14 +414,12 @@ struct TabbedStatsView: View {
         }
     }
     
-    // Include all the existing card implementations from CardBasedStatsView
     private var fullCPUCard: some View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
                 
                 VStack(alignment: .leading, spacing: 12) {
-                    // CPU Usage Progress with frequency info
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Current Usage")
@@ -411,7 +429,7 @@ struct TabbedStatsView: View {
                             Text(String(format: "%.1f%%", systemMonitor.cpuUsage))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                                .monospacedDigit()
+                                .foregroundColor(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
                         }
                         
                         ProgressView(value: systemMonitor.cpuUsage, total: 100)
@@ -419,7 +437,6 @@ struct TabbedStatsView: View {
                             .scaleEffect(y: 1.5)
                     }
                     
-                    // CPU Info Row
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: "cpu.fill")
@@ -443,7 +460,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // CPU Sparkline with enhanced info
                     if !systemMonitor.cpuHistory.isEmpty {
                         Divider()
                         
@@ -481,7 +497,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Top CPU Processes
                     if !systemMonitor.topProcesses.isEmpty {
                         Divider()
                         
@@ -497,16 +512,8 @@ struct TabbedStatsView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
-                                if systemMonitor.initialDataLoaded {
-                                    ForEach(systemMonitor.topProcesses.prefix(5)) { process in
-                                        enhancedProcessRowView(process: process, isCPUView: true)
-                                    }
-                                } else {
-                                    Text("Loading...")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .padding(.vertical, 10)
+                                ForEach(systemMonitor.topProcesses.prefix(5)) { process in
+                                    enhancedProcessRowView(process: process, isCPUView: true)
                                 }
                             }
                         }
@@ -515,9 +522,6 @@ struct TabbedStatsView: View {
             }
         }
     }
-    
-    // Add the remaining card implementations (memory, network, etc.)
-    // For brevity, I'll include placeholders - these should use the same implementations from CardBasedStatsView
     
     private var fullMemoryCard: some View {
         CardView {
@@ -534,7 +538,7 @@ struct TabbedStatsView: View {
                             Text(String(format: "%.1f GB / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                                .monospacedDigit()
+                                .foregroundColor(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                         }
                         
                         ProgressView(value: systemMonitor.memoryUsage.used, total: systemMonitor.memoryUsage.total)
@@ -542,7 +546,6 @@ struct TabbedStatsView: View {
                             .scaleEffect(y: 1.5)
                     }
                     
-                    // Enhanced memory breakdown
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             HStack(spacing: 4) {
@@ -588,7 +591,7 @@ struct TabbedStatsView: View {
                             VStack(alignment: .trailing, spacing: 1) {
                                 Text(String(format: "%.1f GB", systemMonitor.memoryUsage.used))
                                     .font(.caption)
-                                    .monospacedDigit()
+                                    .fontWeight(.semibold)
                                     .foregroundColor(.blue)
                                 Text(String(format: "%.1f%%", usedPercent))
                                     .font(.caption2)
@@ -597,7 +600,6 @@ struct TabbedStatsView: View {
                             }
                         }
                         
-                        // Memory pressure indicator
                         HStack {
                             HStack(spacing: 4) {
                                 Circle()
@@ -617,7 +619,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Top Memory Processes with enhanced display
                     if !systemMonitor.topMemoryProcesses.isEmpty {
                         Divider()
                         
@@ -640,20 +641,105 @@ struct TabbedStatsView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
-                                if systemMonitor.initialDataLoaded {
-                                    ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
-                                        enhancedProcessRowView(process: process, isCPUView: false)
-                                    }
-                                } else {
-                                    Text("Loading...")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .padding(.vertical, 10)
+                                ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
+                                    enhancedProcessRowView(process: process, isCPUView: false)
                                 }
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+    
+    private var fullDiskCard: some View {
+        CardView {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
+                
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Used Space")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(String(format: "%.0f GB / %.0f GB", systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, systemMonitor.diskUsage.total))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                        }
+                        
+                        ProgressView(value: systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, total: systemMonitor.diskUsage.total)
+                            .tint(.purple)
+                            .scaleEffect(y: 1.5)
+                    }
+                    
+                    HStack {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 8, height: 8)
+                            Text("Free")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "%.0f GB", systemMonitor.diskUsage.free))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundColor(.green)
+                    }
+                    
+                    HStack {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.purple)
+                                .frame(width: 8, height: 8)
+                            Text("Used")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "%.1f%% (%.0f GB)", ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100, systemMonitor.diskUsage.total - systemMonitor.diskUsage.free))
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundColor(.purple)
+                    }
+                }
+            }
+        }
+    }
+    
+    private var externalDrivesCard: some View {
+        let drives = getExternalDrives()
+        
+        return CardView {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeaderView(title: "External Drives", icon: "externaldrive.fill", color: .purple)
+                
+                if !drives.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(drives, id: \.mountPoint) { drive in
+                            externalDriveRow(drive: drive)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "externaldrive")
+                            .foregroundColor(.secondary)
+                            .font(.title2)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("No External Drives")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Text("Connect external drives to see them here")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
                 }
             }
         }
@@ -669,7 +755,6 @@ struct TabbedStatsView: View {
                     let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
                     let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
                     
-                    // Current speeds with enhanced display
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
@@ -690,10 +775,9 @@ struct TabbedStatsView: View {
                                 
                                 Spacer()
                                 
-                                // Upload sparkline
                                 if !systemMonitor.uploadHistory.isEmpty {
                                     SparklineView(
-                                        data: systemMonitor.uploadHistory.map { $0 / 1000 }, // Convert to KB for better scale
+                                        data: systemMonitor.uploadHistory.map { $0 / 1000 },
                                         lineColor: .red,
                                         lineWidth: 1.5
                                     )
@@ -724,10 +808,9 @@ struct TabbedStatsView: View {
                                 
                                 Spacer()
                                 
-                                // Download sparkline
                                 if !systemMonitor.downloadHistory.isEmpty {
                                     SparklineView(
-                                        data: systemMonitor.downloadHistory.map { $0 / 1000 }, // Convert to KB for better scale
+                                        data: systemMonitor.downloadHistory.map { $0 / 1000 },
                                         lineColor: .blue,
                                         lineWidth: 1.5
                                     )
@@ -737,7 +820,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Peak speeds
                     if !systemMonitor.uploadHistory.isEmpty || !systemMonitor.downloadHistory.isEmpty {
                         Divider()
                         
@@ -800,96 +882,6 @@ struct TabbedStatsView: View {
         }
     }
     
-    
-    private var fullDiskCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Used Space")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(String(format: "%.0f GB / %.0f GB", systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, systemMonitor.diskUsage.total))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
-                        }
-                        
-                        ProgressView(value: systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, total: systemMonitor.diskUsage.total)
-                            .tint(.purple)
-                            .scaleEffect(y: 1.5)
-                    }
-                    
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                            Text("Free")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Text(String(format: "%.0f GB", systemMonitor.diskUsage.free))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.green)
-                    }
-                    
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.purple)
-                                .frame(width: 8, height: 8)
-                            Text("Used")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
-                        Text(String(format: "%.1f%% (%.0f GB)", ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100, systemMonitor.diskUsage.total - systemMonitor.diskUsage.free))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.purple)
-                    }
-                }
-            }
-        }
-    }
-    
-    // Add helper functions for memory pressure
-    private func memoryPressureColor(for percentage: Double) -> Color {
-        switch percentage {
-        case 0..<60:
-            return .green
-        case 60..<80:
-            return .yellow
-        case 80...100:
-            return .red
-        default:
-            return .gray
-        }
-    }
-    
-    private func memoryPressureText(for percentage: Double) -> String {
-        switch percentage {
-        case 0..<60:
-            return "Normal"
-        case 60..<80:
-            return "Warning"
-        case 80...100:
-            return "Critical"
-        default:
-            return "Unknown"
-        }
-    }
-    
-    // Add the remaining card implementations (memory, network, etc.)
-    // For brevity, I'll include placeholders - these should use the same implementations from CardBasedStatsView
-    
     private var fullPowerConsumptionCard: some View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
@@ -919,12 +911,10 @@ struct TabbedStatsView: View {
                         InfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
                     }
                     
-                    // Power Adapter Information (only show on laptops when adapter is connected)
                     let adapterInfo = systemMonitor.powerConsumptionInfo.adapterInfo
                     if adapterInfo.isConnected && adapterInfo.wattage > 0 {
                         Divider()
                         
-                        // Adapter model and wattage
                         HStack {
                             Image(systemName: getPowerAdapterIcon(for: adapterInfo.type))
                                 .foregroundColor(.green)
@@ -933,6 +923,7 @@ struct TabbedStatsView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             Spacer()
+                            
                             VStack(alignment: .trailing, spacing: 1) {
                                 Text("\(adapterInfo.wattage)W \(adapterInfo.type)")
                                     .font(.subheadline)
@@ -947,7 +938,6 @@ struct TabbedStatsView: View {
                             }
                         }
                         
-                        // Input power and efficiency
                         if adapterInfo.inputPower > 0 {
                             let usagePercent = (adapterInfo.inputPower / Double(adapterInfo.wattage)) * 100
                             
@@ -974,8 +964,6 @@ struct TabbedStatsView: View {
                                         .foregroundColor(getAdapterUsageColor(for: usagePercent))
                                 }
                             }
-                            
-                            // Visual progress bar for adapter usage
                             VStack(alignment: .leading, spacing: 2) {
                                 ProgressView(value: adapterInfo.inputPower, total: Double(adapterInfo.wattage))
                                     .tint(getAdapterUsageColor(for: usagePercent))
@@ -983,7 +971,6 @@ struct TabbedStatsView: View {
                             }
                         }
                         
-                        // Charging efficiency if available
                         if adapterInfo.efficiency > 0 {
                             HStack {
                                 HStack(spacing: 4) {
@@ -1035,7 +1022,7 @@ struct TabbedStatsView: View {
                             Text(String(format: "%.0f%%", systemMonitor.batteryInfo.chargeLevel))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                                .monospacedDigit()
+                                .foregroundColor(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
                         }
                         
                         ProgressView(value: systemMonitor.batteryInfo.chargeLevel, total: 100)
@@ -1085,7 +1072,6 @@ struct TabbedStatsView: View {
                 
                 VStack(alignment: .leading, spacing: 12) {
                     if systemMonitor.upsInfo.present && systemMonitor.upsInfo.chargeLevel > 0 {
-                        // Full UPS info available
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text("Charge Level")
@@ -1095,7 +1081,7 @@ struct TabbedStatsView: View {
                                 Text(String(format: "%.0f%%", systemMonitor.upsInfo.chargeLevel))
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
-                                    .monospacedDigit()
+                                    .foregroundColor(upsChargeColor(for: systemMonitor.upsInfo.chargeLevel))
                             }
                             
                             ProgressView(value: systemMonitor.upsInfo.chargeLevel, total: 100)
@@ -1113,7 +1099,7 @@ struct TabbedStatsView: View {
                                    valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                         
                         if systemMonitor.upsInfo.voltage > 0 {
-                            InfoRowView(label: "Voltage", value: String(format: "%.1f V", systemMonitor.upsInfo.voltage))
+                            InfoRowView(label: "Voltage", value: String(format: "%.1f V", systemMonitor.upsInfo.voltage / 1000.0))
                         }
                         
                         if systemMonitor.upsInfo.loadPercentage > 0 {
@@ -1131,7 +1117,6 @@ struct TabbedStatsView: View {
                                 .foregroundColor(systemMonitor.upsInfo.isCharging ? .red : .green)
                         }
                     } else {
-                        // Basic power source info
                         InfoRowView(label: "Power Source", value: systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource, 
                                    valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                         
@@ -1167,7 +1152,6 @@ struct TabbedStatsView: View {
                     InfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
                     InfoRowView(label: "Boot Time", value: formatBootTime(systemMonitor.systemInfo.bootTime))
                     
-                    // Physical memory info
                     let totalPhysicalMemory = Double(ProcessInfo.processInfo.physicalMemory) / (1000 * 1000 * 1000)
                     InfoRowView(label: "Physical Memory", value: String(format: "%.0f GB", totalPhysicalMemory))
                 }
@@ -1195,7 +1179,6 @@ struct TabbedStatsView: View {
                             .foregroundColor(temperatureColor(for: systemMonitor.cpuTemperature))
                     }
                     
-                    // Temperature sparkline with enhanced info
                     if !systemMonitor.cpuTemperatureHistory.isEmpty {
                         Divider()
                         
@@ -1271,17 +1254,13 @@ struct TabbedStatsView: View {
                 CardHeaderView(title: "System Resources", icon: "gear", color: .gray)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    // Processor count
                     InfoRowView(label: "CPU Cores", value: "\(ProcessInfo.processInfo.processorCount)")
                     
-                    // Active processor count
                     InfoRowView(label: "Active Cores", value: "\(ProcessInfo.processInfo.activeProcessorCount)")
                     
-                    // Process count
                     let processCount = systemMonitor.topProcesses.count + systemMonitor.topMemoryProcesses.count
                     InfoRowView(label: "Running Processes", value: "\(processCount)")
                     
-                    // System load averages (if available)
                     var loadAvg = [Double](repeating: 0, count: 3)
                     let result = getloadavg(&loadAvg, 3)
                     if result != -1 {
@@ -1299,14 +1278,13 @@ struct TabbedStatsView: View {
                                 Text("5m: \(String(format: "%.2f", loadAvg[1]))")
                                     .font(.caption)
                                     .monospacedDigit()
-                                Text("15m: \(String(format: "%.2f", loadAvg[2]))")
+                                Text("15m: \(String(format: "*.2f", loadAvg[2]))")
                                     .font(.caption)
                                     .monospacedDigit()
                             }
                         }
                     }
                     
-                    // Thermal state (if available)
                     if ProcessInfo.processInfo.thermalState != .nominal {
                         Divider()
                         
@@ -1335,7 +1313,6 @@ struct TabbedStatsView: View {
                 CardHeaderView(title: "Top Processes", icon: "list.bullet", color: .orange)
                 
                 VStack(alignment: .leading, spacing: 12) {
-                    // CPU Processes
                     if !systemMonitor.topProcesses.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -1356,7 +1333,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Memory Processes
                     if !systemMonitor.topMemoryProcesses.isEmpty {
                         if !systemMonitor.topProcesses.isEmpty {
                             Divider()
@@ -1415,7 +1391,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Interface type description
                     HStack {
                         Text("Type")
                             .font(.subheadline)
@@ -1426,9 +1401,6 @@ struct TabbedStatsView: View {
                             .fontWeight(.medium)
                             .foregroundColor(.blue)
                     }
-                    
-                    // Network unit info
-                    Divider()
                     
                     HStack {
                         Text("Display Units")
@@ -1452,7 +1424,6 @@ struct TabbedStatsView: View {
                             .foregroundColor(preferences.autoScaleNetwork ? .green : .secondary)
                     }
                     
-                    // Total available interfaces count
                     if !systemMonitor.networkInterfaces.isEmpty {
                         Divider()
                         
@@ -1514,7 +1485,6 @@ struct TabbedStatsView: View {
                         InfoRowView(label: "Country Code", value: externalIPManager.countryCode.uppercased())
                     }
                     
-                    // Last updated info
                     if let lastUpdated = externalIPManager.lastUpdated {
                         Divider()
                         
@@ -1532,7 +1502,6 @@ struct TabbedStatsView: View {
                         }
                     }
                     
-                    // Loading state
                     if externalIPManager.isLoading {
                         HStack {
                             ProgressView()
@@ -1547,18 +1516,217 @@ struct TabbedStatsView: View {
         }
     }
     
-    // MARK: - Additional Helper Functions
+    private var wifiStatsCard: some View {
+        CardView {
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeaderView(title: "WiFi Statistics", icon: "wifi", color: .blue)
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    let wifiInfo = getWiFiInfo()
+                    
+                    if wifiInfo.isConnected {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Network Name")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(wifiInfo.ssid)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.primary)
+                            }
+                            
+                            HStack {
+                                Text("Signal Strength")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                HStack(spacing: 6) {
+                                    Image(systemName: getWiFiSignalIcon(rssi: wifiInfo.rssi))
+                                        .foregroundColor(getWiFiSignalColor(rssi: wifiInfo.rssi))
+                                        .font(.subheadline)
+                                    Text("\(wifiInfo.rssi) dBm")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(getWiFiSignalColor(rssi: wifiInfo.rssi))
+                                    Text("(\(wifiInfo.quality))")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        
+                        Divider()
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            if !wifiInfo.channel.isEmpty {
+                                InfoRowView(label: "Channel", value: "\(wifiInfo.channel) (\(wifiInfo.channelWidth))")
+                            }
+                            
+                            if !wifiInfo.phyMode.isEmpty {
+                                InfoRowView(label: "Protocol", value: wifiInfo.phyMode)
+                            }
+                            
+                            if !wifiInfo.security.isEmpty {
+                                InfoRowView(label: "Security", value: wifiInfo.security)
+                            }
+                            
+                            if !wifiInfo.actualRate.isEmpty {
+                                InfoRowView(label: "Data Rate", value: wifiInfo.actualRate)
+                            }
+                            
+                            if !wifiInfo.maxRate.isEmpty {
+                                InfoRowView(label: "Max Rate", value: wifiInfo.maxRate, valueColor: .secondary)
+                            }
+                        }
+                        
+                        if wifiInfo.noise != 0 {
+                            Divider()
+                            
+                            HStack {
+                                Text("Noise Level")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(wifiInfo.noise) dBm")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            if wifiInfo.rssi != 0 && wifiInfo.noise != 0 {
+                                let snr = wifiInfo.rssi - wifiInfo.noise
+                                HStack {
+                                    Text("Signal-to-Noise")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("\(snr) dB")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(getSNRColor(snr: snr))
+                                }
+                            }
+                        }
+                        
+                        if !wifiInfo.bssid.isEmpty {
+                            Divider()
+                            
+                            HStack {
+                                Text("BSSID")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text(wifiInfo.bssid)
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    } else {
+                        HStack {
+                            Image(systemName: "wifi.slash")
+                                .foregroundColor(.secondary)
+                                .font(.title2)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("WiFi Not Connected")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Text("Connect to a WiFi network to see statistics")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+            }
+        }
+    }
     
-    private func showMacmonInstallation() {
-        let alert = NSAlert()
-        alert.messageText = "Install macmon for Accurate Temperature"
-        alert.informativeText = TemperatureMonitor.getInstallationInstructions()
-        alert.addButton(withTitle: "Copy Command")
-        alert.addButton(withTitle: "Cancel")
+    private func getWiFiInfo() -> WiFiInfo {
+        // Try CoreWLAN first
+        if let coreWLANInfo = getBasicWiFiInfo() {
+            return coreWLANInfo
+        }
         
-        if alert.runModal() == .alertFirstButtonReturn {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString("brew install macmon", forType: .string)
+        // Return empty if no connection detected
+        return WiFiInfo()
+    }
+    
+    private func getBasicWiFiInfo() -> WiFiInfo? {
+        guard let interfaces = CWWiFiClient.shared().interfaces() else {
+            return nil
+        }
+        
+        for interface in interfaces {
+            if interface.powerOn(),
+               let ssid = interface.ssid(),
+               !ssid.isEmpty {
+                
+                return WiFiInfo(
+                    isConnected: true,
+                    ssid: ssid,
+                    bssid: interface.bssid() ?? "",
+                    rssi: Int(interface.rssiValue()),
+                    noise: Int(interface.noiseMeasurement()),
+                    channel: String(interface.wlanChannel()?.channelNumber ?? 0),
+                    channelWidth: "",
+                    phyMode: "",
+                    security: "",
+                    maxRate: "",
+                    actualRate: "\(Int(interface.transmitRate())) Mbps",
+                    quality: calculateSignalQuality(rssi: Int(interface.rssiValue()))
+                )
+            }
+        }
+        
+        return nil
+    }
+    
+    private func getWiFiSignalIcon(rssi: Int) -> String {
+        if rssi == 0 {
+            return "wifi.slash"
+        } else if rssi >= -30 {
+            return "wifi"
+        } else if rssi >= -67 {
+            return "wifi"
+        } else if rssi >= -70 {
+            return "wifi"
+        } else if rssi >= -80 {
+            return "wifi"
+        } else {
+            return "wifi"
+        }
+    }
+    
+    private func getWiFiSignalColor(rssi: Int) -> Color {
+        if rssi == 0 {
+            return .gray
+        } else if rssi >= -30 {
+            return .green
+        } else if rssi >= -67 {
+            return .green
+        } else if rssi >= -70 {
+            return .yellow
+        } else if rssi >= -80 {
+            return .orange
+        } else {
+            return .red
+        }
+    }
+    
+    private func getSNRColor(snr: Int) -> Color {
+        if snr >= 25 {
+            return .green
+        } else if snr >= 15 {
+            return .yellow
+        } else if snr >= 10 {
+            return .orange
+        } else {
+            return .red
         }
     }
     
@@ -1722,7 +1890,6 @@ struct TabbedStatsView: View {
     private func enhancedProcessRowView(process: SystemProcessInfo, isCPUView: Bool) -> some View {
         HStack {
             HStack(spacing: 6) {
-                // Process type indicator
                 Image(systemName: getProcessIcon(for: process.name))
                     .foregroundColor(getProcessIconColor(for: process.name))
                     .font(.caption)
@@ -1749,9 +1916,6 @@ struct TabbedStatsView: View {
         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
         .cornerRadius(6)
     }
-    
-    // Include all helper functions from the original CardBasedStatsView
-    // (I'll skip duplicating them here for brevity, but they should all be included)
     
     private func getProcessIcon(for processName: String) -> String {
         let lowercaseName = processName.lowercased()
@@ -1931,9 +2095,21 @@ struct TabbedStatsView: View {
             return "\(minutes)m"
         }
     }
+    
+    private func showMacmonInstallation() {
+        let alert = NSAlert()
+        alert.messageText = "Install macmon for Accurate Temperature"
+        alert.informativeText = TemperatureMonitor.getInstallationInstructions()
+        alert.addButton(withTitle: "Copy Command")
+        alert.addButton(withTitle: "Cancel")
+        
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("brew install macmon", forType: .string)
+        }
+    }
 }
 
-// MARK: - Compact Stats Card
 struct CompactStatsCard: View {
     let title: String
     let value: String
@@ -1947,26 +2123,346 @@ struct CompactStatsCard: View {
                 HStack {
                     Image(systemName: icon)
                         .foregroundColor(color)
-                        .font(.subheadline)
+                        .font(.title3)
                     Text(title)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    Spacer()
+                        .font(.headline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
                 }
                 
                 Text(value)
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(color)
-                    .monospacedDigit()
                 
                 if !subtitle.isEmpty {
                     Text(subtitle)
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+// MARK: - External Drive Helper Functions
+private func getExternalDrives() -> [ExternalDrive] {
+    var drives: [ExternalDrive] = []
+    
+    if let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: [
+        .volumeNameKey,
+        .volumeTotalCapacityKey,
+        .volumeAvailableCapacityKey,
+        .volumeIsRemovableKey,
+        .volumeIsEjectableKey,
+        .volumeIsInternalKey,
+        .volumeLocalizedFormatDescriptionKey
+    ], options: [.skipHiddenVolumes]) {
+        
+        for volumeURL in volumes {
+            do {
+                let resourceValues = try volumeURL.resourceValues(forKeys: [
+                    .volumeNameKey,
+                    .volumeTotalCapacityKey,
+                    .volumeAvailableCapacityKey,
+                    .volumeIsRemovableKey,
+                    .volumeIsEjectableKey,
+                    .volumeIsInternalKey,
+                    .volumeLocalizedFormatDescriptionKey
+                ])
+                
+                let mountPoint = volumeURL.path
+                let volumeName = resourceValues.volumeName ?? "Unknown"
+                
+                guard !mountPoint.contains("System/Volumes"),
+                      !mountPoint.contains(".timemachine"),
+                      !volumeName.lowercased().contains("time machine"),
+                      !volumeName.lowercased().contains("backups"),
+                      !volumeName.lowercased().contains("backup"),
+                      mountPoint != "/",
+                      mountPoint != "/System/Volumes/Data",
+                      mountPoint != "/System/Volumes/Preboot",
+                      mountPoint != "/System/Volumes/Update",
+                      mountPoint != "/private/var/vm" else {
+                    continue
+                }
+                
+                let isInternal = resourceValues.volumeIsInternal ?? false
+                let isRemovable = resourceValues.volumeIsRemovable ?? false
+                let isEjectable = resourceValues.volumeIsEjectable ?? false
+                
+                guard !isInternal || isRemovable || isEjectable else {
+                    continue
+                }
+                
+                let totalSpace = Double(resourceValues.volumeTotalCapacity ?? 0)
+                let freeSpace = Double(resourceValues.volumeAvailableCapacity ?? 0)
+                let fileSystem = resourceValues.volumeLocalizedFormatDescription ?? "Unknown"
+                
+                guard totalSpace > 100_000_000 else {
+                    continue
+                }
+                
+                let drive = ExternalDrive(
+                    mountPoint: mountPoint,
+                    displayName: volumeName,
+                    fileSystem: fileSystem,
+                    totalSpace: totalSpace,
+                    freeSpace: freeSpace,
+                    isRemovable: isRemovable,
+                    isEjectable: isEjectable,
+                    deviceName: volumeURL.lastPathComponent
+                )
+                
+                drives.append(drive)
+                
+            } catch {
+                print("Error reading volume info for \(volumeURL.path): \(error)")
+            }
+        }
+    }
+    
+    return drives.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+}
+
+private func externalDriveRow(drive: ExternalDrive) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+        HStack {
+            Image(systemName: getDriveIcon(for: drive))
+                .foregroundColor(getDriveColor(for: drive))
+                .font(.title3)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(drive.displayName)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primary)
+                
+                if !drive.fileSystem.isEmpty {
+                    Text(drive.fileSystem)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            
+            Spacer()
+            
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(formatBytes(drive.totalSpace))
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .monospacedDigit()
+                    .foregroundColor(.primary)
+                
+                let usedPercent = drive.totalSpace > 0 ? ((drive.totalSpace - drive.freeSpace) / drive.totalSpace) * 100 : 0
+                Text("\(String(format: "%.1f", usedPercent))% used")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundColor(.secondary)
+            }
+        }
+        
+        if drive.totalSpace > 0 {
+            let usedSpace = drive.totalSpace - drive.freeSpace
+            let usagePercent = (usedSpace / drive.totalSpace) * 100
+            
+            VStack(alignment: .leading, spacing: 4) {
+                ProgressView(value: usedSpace, total: drive.totalSpace)
+                    .tint(getDriveUsageColor(for: usagePercent))
+                    .scaleEffect(y: 0.8)
+                
+                HStack {
+                    Text("Free: \(formatBytes(drive.freeSpace))")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                    
+                    Spacer()
+                    
+                    Text("Used: \(formatBytes(usedSpace))")
+                        .font(.caption)
+                        .foregroundColor(getDriveUsageColor(for: usagePercent))
+                }
+            }
+        }
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(Color(NSColor.controlBackgroundColor).opacity(0.3))
+    .cornerRadius(8)
+}
+
+private func getDriveIcon(for drive: ExternalDrive) -> String {
+    let name = drive.displayName.lowercased()
+    let fileSystem = drive.fileSystem.lowercased()
+    
+    if fileSystem.contains("apfs") {
+        return "externaldrive.fill"
+    } else if fileSystem.contains("hfs") {
+        return "externaldrive"
+    } else if fileSystem.contains("fat") || fileSystem.contains("exfat") || fileSystem.contains("ntfs") {
+        return "externaldrive.connected.to.line.below"
+    } else if name.contains("usb") || drive.isRemovable {
+        return "externaldrive.badge.plus"
+    } else {
+        return "externaldrive"
+    }
+}
+
+private func getDriveColor(for drive: ExternalDrive) -> Color {
+    let fileSystem = drive.fileSystem.lowercased()
+    
+    if fileSystem.contains("apfs") {
+        return .blue
+    } else if fileSystem.contains("hfs") {
+        return .green
+    } else if fileSystem.contains("fat") || fileSystem.contains("exfat") {
+        return .yellow
+    } else if fileSystem.contains("ntfs") {
+        return .red
+    } else {
+        return .orange
+    }
+}
+
+private func getDriveUsageColor(for percentage: Double) -> Color {
+    switch percentage {
+    case 0..<50:
+        return .green
+    case 50..<75:
+        return .yellow
+    case 75..<90:
+        return .orange
+    case 90...100:
+        return .red
+    default:
+        return .gray
+    }
+}
+
+private func formatBytes(_ bytes: Double) -> String {
+    let formatter = ByteCountFormatter()
+    formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
+    formatter.countStyle = .file
+    return formatter.string(fromByteCount: Int64(bytes))
+}
+
+// MARK: - Shared UI Components
+
+struct CardView<Content: View>: View {
+    let content: Content
+    
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+    
+    var body: some View {
+        content
+            .padding(12)
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(NSColor.controlBackgroundColor))
+                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.2), lineWidth: 0.5)
+            }
+    }
+}
+
+struct CardHeaderView: View {
+    let title: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .foregroundColor(color)
+                .font(.title3)
+            .frame(width: 20, height: 20)
+            
+            Text(title)
+                .font(.headline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primary)
+            
+            Spacer()
+        }
+        .padding(.bottom, 8)
+    }
+}
+
+struct InfoRowView: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .primary
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .monospacedDigit()
+                .foregroundColor(valueColor)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
+extension TabbedStatsView {
+    private func memoryPressureColor(for percentage: Double) -> Color {
+        switch percentage {
+        case 0..<60:
+            return .green
+        case 60..<80:
+            return .yellow
+        case 80...100:
+            return .red
+        default:
+            return .gray
+        }
+    }
+    
+    private func memoryPressureText(for percentage: Double) -> String {
+        switch percentage {
+        case 0..<60:
+            return "Normal"
+        case 60..<80:
+            return "Warning"
+        case 80...100:
+            return "Critical"
+        default:
+            return "Unknown"
+        }
+    }
+    
+    private func calculateSignalQuality(rssi: Int) -> String {
+        if rssi == 0 {
+            return "0%"
+        }
+        
+        let quality: Int
+        if rssi >= -30 {
+            quality = 100
+        } else if rssi >= -67 {
+            quality = Int(2 * (rssi + 100))
+        } else if rssi >= -70 {
+            quality = Int((rssi + 100) * 2)
+        } else if rssi >= -80 {
+            quality = Int((rssi + 100) * 2)
+        } else if rssi >= -90 {
+            quality = Int((rssi + 100))
+        } else {
+            quality = 0
+        }
+        
+        return "\(max(0, min(100, quality)))%"
     }
 }

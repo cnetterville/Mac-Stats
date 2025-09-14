@@ -130,7 +130,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func cpuCard() -> some View {
@@ -339,7 +338,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func memoryCard() -> some View {
@@ -411,6 +409,7 @@ struct CardBasedStatsView: View {
                             VStack(alignment: .trailing, spacing: 1) {
                                 Text(String(format: "%.1f GB", systemMonitor.memoryUsage.used))
                                     .font(.caption)
+                                    .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(.blue)
                                 Text(String(format: "%.1f%%", usedPercent))
@@ -480,7 +479,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func networkCard() -> some View {
@@ -651,7 +649,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func diskCard() -> some View {
@@ -711,7 +708,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func powerConsumptionCard() -> some View {
@@ -743,97 +739,12 @@ struct CardBasedStatsView: View {
                         InfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
                     }
                     
-                    // Power Adapter Information (only show on laptops when adapter is connected)
-                    let adapterInfo = systemMonitor.powerConsumptionInfo.adapterInfo
-                    if adapterInfo.isConnected && adapterInfo.wattage > 0 {
-                        Divider()
-                        
-                        // Adapter model and wattage
-                        HStack {
-                            Image(systemName: getPowerAdapterIcon(for: adapterInfo.type))
-                                .foregroundColor(.green)
-                                .font(.subheadline)
-                            Text("Power Adapter")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text("\(adapterInfo.wattage)W \(adapterInfo.type)")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.green)
-                                if !adapterInfo.model.isEmpty && adapterInfo.model != "Unknown" {
-                                    Text(adapterInfo.model)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                        
-                        // Input power and efficiency
-                        if adapterInfo.inputPower > 0 {
-                            let usagePercent = (adapterInfo.inputPower / Double(adapterInfo.wattage)) * 100
-                            
-                            HStack {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.caption)
-                                    Text("Input Power")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text(String(format: "%.1f W", adapterInfo.inputPower))
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .monospacedDigit()
-                                        .foregroundColor(.blue)
-                                    Text(String(format: "%.0f%% of capacity", usagePercent))
-                                        .font(.caption2)
-                                        .monospacedDigit()
-                                        .foregroundColor(getAdapterUsageColor(for: usagePercent))
-                                }
-                            }
-                            
-                            // Visual progress bar for adapter usage
-                            VStack(alignment: .leading, spacing: 2) {
-                                ProgressView(value: adapterInfo.inputPower, total: Double(adapterInfo.wattage))
-                                    .tint(getAdapterUsageColor(for: usagePercent))
-                                    .scaleEffect(y: 0.8)
-                            }
-                        }
-                        
-                        // Charging efficiency if available
-                        if adapterInfo.efficiency > 0 {
-                            HStack {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "speedometer")
-                                        .foregroundColor(.purple)
-                                        .font(.caption)
-                                    Text("Efficiency")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Text(String(format: "%.0f%%", adapterInfo.efficiency))
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .monospacedDigit()
-                                    .foregroundColor(getEfficiencyColor(for: adapterInfo.efficiency))
-                            }
-                        }
-                    }
-                    
                     if systemMonitor.powerConsumptionInfo.isEstimate {
                         HStack {
                             Image(systemName: "info.circle")
                                 .foregroundColor(.secondary)
                                 .font(.caption)
-                            Text(adapterInfo.isConnected ? "Power data estimated" : "Estimated based on system load")
+                            Text("Estimated based on system load")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             Spacer()
@@ -842,7 +753,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func batteryCard() -> some View {
@@ -878,7 +788,6 @@ struct CardBasedStatsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity)
     }
     
     private func upsCard() -> some View {
@@ -933,39 +842,6 @@ struct CardBasedStatsView: View {
                         if !systemMonitor.upsInfo.name.isEmpty && systemMonitor.upsInfo.name != "Unknown" {
                             InfoRowView(label: "Device", value: systemMonitor.upsInfo.name)
                         }
-                        
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.blue)
-                                .font(.caption)
-                            Text(systemMonitor.upsInfo.present ? "Limited UPS information" : "Checking for UPS...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-    
-    private func topProcessesCard(processes: [SystemProcessInfo], title: String, isCPUView: Bool, icon: String, color: Color) -> some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: title, icon: icon, color: color)
-                
-                VStack(alignment: .leading, spacing: 6) {
-                    if processes.isEmpty {
-                        Text(systemMonitor.initialDataLoaded ? "No active processes" : "Loading...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 20)
-                    } else {
-                        ForEach(processes.prefix(5)) { process in
-                            enhancedProcessRowView(process: process, isCPUView: isCPUView)
-                        }
                     }
                 }
             }
@@ -991,33 +867,14 @@ struct CardBasedStatsView: View {
             
             Spacer()
             
-            HStack(spacing: 8) {
-                // Show both CPU and memory for context
-                if !isCPUView && process.cpuUsage > 0.1 {
-                    Text(String(format: "%.1f%%", process.cpuUsage))
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundColor(.orange)
-                        .opacity(0.7)
-                }
-                
-                if isCPUView && process.memoryUsage > 0.1 {
-                    Text(String(format: "%.1f%%", process.memoryUsage))
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundColor(.blue)
-                        .opacity(0.7)
-                }
-                
-                // Main value
-                Text(processValueText(process: process, isCPUView: isCPUView))
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .monospacedDigit()
-                    .foregroundColor(usageColor(for: isCPUView ? process.cpuUsage : process.memoryUsage, 
-                                              thresholds: isCPUView ? (30, 70) : (5, 15)))
-                    .frame(width: 45, alignment: .trailing)
-            }
+            // Main value
+            Text(processValueText(process: process, isCPUView: isCPUView))
+                .font(.caption)
+                .fontWeight(.semibold)
+                .monospacedDigit()
+                .foregroundColor(usageColor(for: isCPUView ? process.cpuUsage : process.memoryUsage, 
+                                          thresholds: isCPUView ? (30, 70) : (5, 15)))
+                .frame(width: 45, alignment: .trailing)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -1025,7 +882,7 @@ struct CardBasedStatsView: View {
         .cornerRadius(6)
     }
     
-    // MARK: - Enhanced Helper Functions
+    // MARK: - Helper Functions
     
     private func getProcessIcon(for processName: String) -> String {
         let lowercaseName = processName.lowercased()
@@ -1034,18 +891,8 @@ struct CardBasedStatsView: View {
             return "gear"
         } else if lowercaseName.contains("safari") || lowercaseName.contains("chrome") || lowercaseName.contains("firefox") {
             return "globe"
-        } else if lowercaseName.contains("xcode") || lowercaseName.contains("code") || lowercaseName.contains("developer") {
+        } else if lowercaseName.contains("xcode") || lowercaseName.contains("code") {
             return "hammer"
-        } else if lowercaseName.contains("finder") {
-            return "folder"
-        } else if lowercaseName.contains("mail") {
-            return "envelope"
-        } else if lowercaseName.contains("music") || lowercaseName.contains("spotify") {
-            return "music.note"
-        } else if lowercaseName.contains("video") || lowercaseName.contains("vlc") || lowercaseName.contains("quicktime") {
-            return "play.circle"
-        } else if lowercaseName.contains("terminal") || lowercaseName.contains("iterm") {
-            return "terminal"
         } else {
             return "app"
         }
@@ -1060,16 +907,6 @@ struct CardBasedStatsView: View {
             return .blue
         } else if lowercaseName.contains("xcode") || lowercaseName.contains("code") {
             return .purple
-        } else if lowercaseName.contains("finder") {
-            return .blue
-        } else if lowercaseName.contains("mail") {
-            return .blue
-        } else if lowercaseName.contains("music") || lowercaseName.contains("spotify") {
-            return .green
-        } else if lowercaseName.contains("video") || lowercaseName.contains("vlc") {
-            return .orange
-        } else if lowercaseName.contains("terminal") {
-            return .green
         } else {
             return .secondary
         }
@@ -1317,116 +1154,5 @@ struct CardBasedStatsView: View {
         formatter.dateStyle = .short
         formatter.timeStyle = .short
         return formatter.string(from: bootTime)
-    }
-    
-    private func getPowerAdapterIcon(for type: String) -> String {
-        switch type.lowercased() {
-        case "magsafe 3", "magsafe3":
-            return "cable.connector"
-        case "magsafe":
-            return "cable.connector"
-        case "usb-c", "usbc":
-            return "cable.connector.horizontal"
-        case "lightning":
-            return "bolt.fill"
-        default:
-            return "cable.connector"
-        }
-    }
-    
-    private func getAdapterUsageColor(for percentage: Double) -> Color {
-        switch percentage {
-        case 0..<50:
-            return .green
-        case 50..<75:
-            return .yellow
-        case 75..<90:
-            return .orange
-        case 90...100:
-            return .red
-        default:
-            return .gray
-        }
-    }
-    
-    private func getEfficiencyColor(for efficiency: Double) -> Color {
-        switch efficiency {
-        case 90...100:
-            return .green
-        case 70..<90:
-            return .yellow
-        case 50..<70:
-            return .orange
-        case 0..<50:
-            return .red
-        default:
-            return .gray
-        }
-    }
-}
-
-struct CardView<Content: View>: View {
-    let content: Content
-    
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-    
-    var body: some View {
-        content
-            .padding(12)
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(NSColor.controlBackgroundColor))
-                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 0.5)
-            }
-    }
-}
-
-struct CardHeaderView: View {
-    let title: String
-    let icon: String
-    let color: Color
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-                .font(.title3)
-                .frame(width: 20, height: 20)
-            
-            Text(title)
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-            
-            Spacer()
-        }
-        .padding(.bottom, 8)
-    }
-}
-
-struct InfoRowView: View {
-    let label: String
-    let value: String
-    var valueColor: Color = .primary
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .monospacedDigit()
-                .foregroundColor(valueColor)
-                .multilineTextAlignment(.trailing)
-        }
     }
 }
