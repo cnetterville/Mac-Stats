@@ -428,6 +428,18 @@ class WiFiManager: NSObject, ObservableObject, CLLocationManagerDelegate {
             return "WPA2 Enterprise"
         case .enterprise:
             return "WPA3 Enterprise"
+        case .wpa3Transition:
+            return "WPA3 Transition"
+        case .OWE:
+            return "OWE"
+        case .oweTransition:
+            return "OWE Transition"
+        case .unknown:
+            return "Unknown"
+        case .wpa3Personal:
+            return "WPA3 Personal"
+        case .wpa3Enterprise:
+            return "WPA3 Enterprise"
         @unknown default:
             return "Unknown"
         }
