@@ -263,10 +263,7 @@ struct TabbedStatsView: View {
             if preferences.showMemory {
                 fullMemoryCard
             }
-            
-            if !systemMonitor.topProcesses.isEmpty || !systemMonitor.topMemoryProcesses.isEmpty {
-                processesCard
-            }
+
         }
     }
     
@@ -1293,68 +1290,6 @@ struct TabbedStatsView: View {
                                 .fontWeight(.semibold)
                                 .foregroundColor(getThermalStateColor())
                         }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var processesCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Top Processes", icon: "list.bullet", color: .orange)
-            
-                VStack(alignment: .leading, spacing: 12) {
-                    if !systemMonitor.topProcesses.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "cpu")
-                                    .foregroundColor(.orange)
-                                    .font(.caption)
-                                Text("Top CPU Processes")
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(systemMonitor.topProcesses.prefix(5)) { process in
-                                    enhancedProcessRowView(process: process, isCPUView: true)
-                                }
-                            }
-                        }
-                    }
-                    
-                    if !systemMonitor.topMemoryProcesses.isEmpty {
-                        if !systemMonitor.topProcesses.isEmpty {
-                            Divider()
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "memorychip")
-                                    .foregroundColor(.blue)
-                                    .font(.caption)
-                                Text("Top Memory Processes")
-                                    .font(.headline)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
-                                    enhancedProcessRowView(process: process, isCPUView: false)
-                                }
-                            }
-                        }
-                    }
-                    
-                    if systemMonitor.topProcesses.isEmpty && systemMonitor.topMemoryProcesses.isEmpty {
-                        Text(systemMonitor.initialDataLoaded ? "No active processes" : "Loading processes...")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.vertical, 20)
                     }
                 }
             }
