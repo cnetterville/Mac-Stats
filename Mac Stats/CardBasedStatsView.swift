@@ -30,9 +30,6 @@ struct CardBasedStatsView: View {
                         systemMonitor.refreshAllData()
                         externalIPManager.refreshExternalIP()
                         wifiManager.refreshWiFiInfo()
-                        
-                        // Run debug test
-                        systemMonitor.testSystemCalls()
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.title2)
@@ -301,6 +298,58 @@ struct CardBasedStatsView: View {
                                 }
                             }
                         }
+                    }
+                    
+                    // Fan Speed Information
+                    Divider()
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Image(systemName: "fan")
+                                .foregroundColor(.blue)
+                                .font(.subheadline)
+                            Text("Fan Speed")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .monospacedDigit()
+                                    .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
+                                
+                                if systemMonitor.fanInfo.isEstimate {
+                                    Text("Estimated")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: getThermalPressureIcon(for: systemMonitor.fanInfo.thermalState))
+                                    .foregroundColor(getThermalPressureColor(for: systemMonitor.fanInfo.thermalState))
+                                    .font(.caption)
+                                Text("Thermal: \(systemMonitor.fanInfo.thermalPressure)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Text(String(format: "%.0f%% of max", (systemMonitor.fanInfo.rpm / systemMonitor.fanInfo.maxRPM) * 100))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        // Mini fan speed progress bar
+                        ProgressView(value: systemMonitor.fanInfo.rpm, total: systemMonitor.fanInfo.maxRPM)
+                            .tint(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
+                            .scaleEffect(y: 0.8)
                     }
                     
                     // Top CPU Processes with enhanced display
@@ -1295,6 +1344,52 @@ struct CardBasedStatsView: View {
             return .red
         default:
             return .secondary
+        }
+    }
+    
+    private func fanSpeedColor(for rpm: Double) -> Color {
+        let percentage = (rpm / 6000.0) * 100 // Assuming max 6000 RPM
+        switch percentage {
+        case 0..<30:
+            return .green
+        case 30..<60:
+            return .yellow
+        case 60..<80:
+            return .orange
+        case 80...100:
+            return .red
+        default:
+            return .gray
+        }
+    }
+    
+    private func getThermalPressureIcon(for state: Int) -> String {
+        switch state {
+        case 0:
+            return "checkmark.circle.fill"
+        case 1:
+            return "exclamationmark.triangle.fill"
+        case 2:
+            return "thermometer.sun.fill"
+        case 3:
+            return "flame.fill"
+        default:
+            return "exclamationmark.octagon.fill"
+        }
+    }
+    
+    private func getThermalPressureColor(for state: Int) -> Color {
+        switch state {
+        case 0:
+            return .green
+        case 1:
+            return .yellow
+        case 2:
+            return .orange
+        case 3:
+            return .red
+        default:
+            return .purple
         }
     }
     

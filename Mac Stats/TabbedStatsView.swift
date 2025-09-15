@@ -96,7 +96,6 @@ struct TabbedStatsView: View {
                     systemMonitor.refreshAllData()
                     externalIPManager.refreshExternalIP()
                     wifiManager.refreshWiFiInfo()
-                    systemMonitor.testSystemCalls()
                 }) {
                     Image(systemName: "arrow.clockwise")
                         .font(.title2)
@@ -468,7 +467,6 @@ struct TabbedStatsView: View {
                                 VStack(alignment: .trailing, spacing: 1) {
                                     Text("Avg: \(String(format: "%.1f%%", avgUsage))")
                                         .font(.caption)
-                                        .monospacedDigit()
                                         .foregroundColor(.secondary)
                                     Text("Peak: \(String(format: "%.1f%%", maxUsage))")
                                         .font(.caption)
@@ -1151,7 +1149,7 @@ struct TabbedStatsView: View {
     private var temperatureCard: some View {
         CardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "CPU Temperature", icon: "thermometer", color: .red)
+                CardHeaderView(title: "CPU Temperature & Cooling", icon: "thermometer", color: .red)
             
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -1166,6 +1164,69 @@ struct TabbedStatsView: View {
                             .fontWeight(.bold)
                             .monospacedDigit()
                             .foregroundColor(temperatureColor(for: systemMonitor.cpuTemperature))
+                    }
+                    
+                    Divider()
+                    
+                    HStack {
+                        HStack(spacing: 4) {
+                            Image(systemName: "fan")
+                                .foregroundColor(.blue)
+                                .font(.subheadline)
+                            Text("Fan Speed")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
+                            
+                            if systemMonitor.fanInfo.isEstimate {
+                                Text("Estimated")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    
+                    HStack {
+                        HStack(spacing: 4) {
+                            Image(systemName: getThermalPressureIcon(for: systemMonitor.fanInfo.thermalState))
+                                .foregroundColor(getThermalPressureColor(for: systemMonitor.fanInfo.thermalState))
+                                .font(.caption)
+                            Text("Thermal Pressure")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                        
+                        Text(systemMonitor.fanInfo.thermalPressure)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundColor(getThermalPressureColor(for: systemMonitor.fanInfo.thermalState))
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Fan Activity")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(String(format: "%.0f%% of max", (systemMonitor.fanInfo.rpm / systemMonitor.fanInfo.maxRPM) * 100))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        ProgressView(value: systemMonitor.fanInfo.rpm, total: systemMonitor.fanInfo.maxRPM)
+                            .tint(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
+                            .scaleEffect(y: 1.2)
                     }
                     
                     if !systemMonitor.cpuTemperatureHistory.isEmpty {
@@ -2258,6 +2319,52 @@ struct TabbedStatsView: View {
             return "Critical"
         default:
             return "Unknown"
+        }
+    }
+    
+    private func fanSpeedColor(for rpm: Double) -> Color {
+        let percentage = (rpm / 6000.0) * 100 // Assuming max 6000 RPM
+        switch percentage {
+        case 0..<30:
+            return .green
+        case 30..<60:
+            return .yellow
+        case 60..<80:
+            return .orange
+        case 80...100:
+            return .red
+        default:
+            return .gray
+        }
+    }
+    
+    private func getThermalPressureColor(for state: Int) -> Color {
+        switch state {
+        case 0:
+            return .green
+        case 1:
+            return .yellow
+        case 2:
+            return .orange
+        case 3:
+            return .red
+        default:
+            return .purple
+        }
+    }
+    
+    private func getThermalPressureIcon(for state: Int) -> String {
+        switch state {
+        case 0:
+            return "checkmark.circle.fill"
+        case 1:
+            return "exclamationmark.triangle.fill"
+        case 2:
+            return "thermometer.sun.fill"
+        case 3:
+            return "flame.fill"
+        default:
+            return "exclamationmark.octagon.fill"
         }
     }
 }

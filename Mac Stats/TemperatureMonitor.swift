@@ -60,6 +60,77 @@ class TemperatureMonitor {
         return temperature
     }
     
+    // Estimate fan speed based on temperature and thermal state
+    static func estimateFanSpeed() -> (rpm: Double, isEstimate: Bool) {
+        let temperature = averageCPUTemperature()
+        let thermalState = getThermalState()
+        
+        // Estimate fan speed based on temperature curves for Apple Silicon
+        let estimatedRPM: Double
+        
+        if temperature < 40 {
+            estimatedRPM = 1200 // Base fan speed for Apple Silicon
+        } else if temperature < 60 {
+            // Linear increase from 1200 to 2500 RPM
+            estimatedRPM = 1200 + ((temperature - 40) / 20) * 1300
+        } else if temperature < 80 {
+            // Faster increase from 2500 to 4500 RPM
+            estimatedRPM = 2500 + ((temperature - 60) / 20) * 2000
+        } else {
+            // High temperature - estimated max fan speed
+            estimatedRPM = min(6000, 4500 + ((temperature - 80) / 20) * 1500)
+        }
+        
+        // Adjust based on thermal state
+        let thermalAdjustment = Double(thermalState) * 500
+        let finalRPM = estimatedRPM + thermalAdjustment
+        
+        return (rpm: finalRPM, isEstimate: true)
+    }
+    
+    // Get thermal state from system (0 = normal, higher = more thermal pressure)
+    static func getThermalState() -> Int {
+        var thermalState: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        
+        // Try to get thermal state from sysctl
+        if sysctlbyname("machdep.xcpm.cpu_thermal_state", &thermalState, &size, nil, 0) == 0 {
+            return Int(thermalState)
+        }
+        
+        // Fallback: estimate from temperature but avoid circular dependency
+        // Use a simple temperature estimate without calling averageCPUTemperature()
+        let cpuUsage = getCurrentCPUUsage()
+        let estimatedTemp = 40.0 + (cpuUsage / 100.0) * 40.0 // Simple estimate
+        
+        if estimatedTemp > 85 {
+            return 3 // High thermal pressure
+        } else if estimatedTemp > 70 {
+            return 2 // Medium thermal pressure
+        } else if estimatedTemp > 55 {
+            return 1 // Low thermal pressure
+        }
+        
+        return 0 // Normal
+    }
+    
+    // Get detailed thermal information
+    static func getThermalInfo() -> (state: Int, pressure: String, fanEstimate: Double) {
+        let state = getThermalState()
+        let fanSpeed = estimateFanSpeed()
+        
+        let pressure: String
+        switch state {
+        case 0: pressure = "Normal"
+        case 1: pressure = "Light"
+        case 2: pressure = "Moderate"
+        case 3: pressure = "Heavy"
+        default: pressure = "Critical"
+        }
+        
+        return (state: state, pressure: pressure, fanEstimate: fanSpeed.rpm)
+    }
+    
     // Check if real temperature sensors are available
     static func hasTemperatureSensors() -> Bool {
         // Check if macmon is available
@@ -131,13 +202,26 @@ class TemperatureMonitor {
             let pipe = Pipe()
             
             task.executableURL = URL(fileURLWithPath: path)
-            task.arguments = ["pipe", "-s", "1"]  // FIXED: Changed from "json" to "pipe"
+            task.arguments = ["pipe", "-s", "1"]
             task.standardOutput = pipe
             task.standardError = Pipe() // Suppress stderr
             
+            // Add timeout protection
+            task.terminationHandler = { _ in }
+            
             do {
                 try task.run()
-                task.waitUntilExit()
+                
+                // Wait with timeout
+                let timeoutDate = Date().addingTimeInterval(5.0) // 5 second timeout
+                while task.isRunning && Date() < timeoutDate {
+                    Thread.sleep(forTimeInterval: 0.1)
+                }
+                
+                if task.isRunning {
+                    task.terminate()
+                    continue
+                }
                 
                 guard task.terminationStatus == 0 else { continue }
                 
@@ -183,9 +267,22 @@ class TemperatureMonitor {
         task.standardOutput = pipe
         task.standardError = Pipe()
         
+        // Add timeout protection
+        task.terminationHandler = { _ in }
+        
         do {
             try task.run()
-            task.waitUntilExit()
+            
+            // Wait with timeout
+            let timeoutDate = Date().addingTimeInterval(3.0) // 3 second timeout
+            while task.isRunning && Date() < timeoutDate {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            
+            if task.isRunning {
+                task.terminate()
+                return 0.0
+            }
             
             guard task.terminationStatus == 0 else { return 0.0 }
             

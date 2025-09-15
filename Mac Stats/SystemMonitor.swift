@@ -121,6 +121,31 @@ struct BatteryInfo {
     }
 }
 
+// Struct to hold Fan information
+struct FanInfo {
+    let rpm: Double
+    let isEstimate: Bool
+    let thermalState: Int
+    let thermalPressure: String
+    let maxRPM: Double
+    
+    init() {
+        self.rpm = 0.0
+        self.isEstimate = true
+        self.thermalState = 0
+        self.thermalPressure = "Normal"
+        self.maxRPM = 6000.0
+    }
+    
+    init(rpm: Double, isEstimate: Bool, thermalState: Int, thermalPressure: String, maxRPM: Double = 6000.0) {
+        self.rpm = rpm
+        self.isEstimate = isEstimate
+        self.thermalState = thermalState
+        self.thermalPressure = thermalPressure
+        self.maxRPM = maxRPM
+    }
+}
+
 // Struct to hold System Information
 struct SystemInfo {
     let modelName: String
@@ -222,6 +247,7 @@ class SystemMonitor: ObservableObject {
     // MARK: - Published Properties
     @Published var cpuUsage: Double = 0.0
     @Published var cpuTemperature: Double = 0.0
+    @Published var fanInfo: FanInfo = FanInfo() // Add fan information
     @Published var memoryUsage: (used: Double, total: Double) = (0.0, 0.0)
     @Published var diskUsage: (free: Double, total: Double) = (0.0, 0.0)
     @Published var networkUsage: (upload: Double, download: Double) = (0.0, 0.0)
@@ -334,11 +360,13 @@ class SystemMonitor: ObservableObject {
         externalIPRefreshTimer = nil
     }
     
-    // Method to refresh all data immediately
     func refreshAllData() {
+        print(" SystemMonitor: Refreshing all system data...")
+        
         let group = DispatchGroup()
         var cpu: Double = 0.0
         var cpuTemp: Double = 0.0
+        var fan: FanInfo = FanInfo()
         var memory: (used: Double, total: Double) = (0.0, 0.0)
         var disk: (free: Double, total: Double) = (0.0, 0.0)
         var network: (upload: Double, download: Double) = (0.0, 0.0)
@@ -358,6 +386,12 @@ class SystemMonitor: ObservableObject {
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async {
             cpuTemp = self.getCurrentCPUTemperature()
+            group.leave()
+        }
+        
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            fan = self.getCurrentFanInfo()
             group.leave()
         }
         
@@ -424,6 +458,7 @@ class SystemMonitor: ObservableObject {
             // Update all published properties
             self.cpuUsage = cpu
             self.cpuTemperature = cpuTemp
+            self.fanInfo = fan
             self.memoryUsage = memory
             self.diskUsage = disk
             self.networkUsage = network
@@ -436,6 +471,7 @@ class SystemMonitor: ObservableObject {
             
             // Set this flag LAST to ensure all data is updated
             self.initialDataLoaded = true
+            print(" SystemMonitor: Initial data loaded successfully!")
             
             // Reset UPS power state tracking after initial load
             self.resetUPSPowerStateTracking()
@@ -545,7 +581,7 @@ class SystemMonitor: ObservableObject {
                 }
             }
         } catch {
-            print("Error getting stats for interface \(interface): \(error)")
+            print(" Error getting stats for interface \(interface): \(error)")
         }
         
         return (bytesIn: 0, bytesOut: 0)
@@ -556,6 +592,7 @@ class SystemMonitor: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             let cpu = self.getCurrentCPU()
             let cpuTemp = self.getCurrentCPUTemperature()
+            let fan = self.getCurrentFanInfo() // Add fan info update
             let memory = self.getCurrentMemory()
             let disk = self.getCurrentDisk()
             let network = self.getCurrentNetwork()
@@ -571,6 +608,7 @@ class SystemMonitor: ObservableObject {
                 self.updateNetworkHistory(upload: network.upload, download: network.download)
                 self.cpuUsage = cpu
                 self.cpuTemperature = cpuTemp
+                self.fanInfo = fan // Update fan info
                 self.memoryUsage = memory
                 self.diskUsage = disk
                 self.networkUsage = network
@@ -663,15 +701,13 @@ class SystemMonitor: ObservableObject {
                 let usage = ((user - prevUser + system - prevSystem + nice - prevNice) / total) * 100
                 // Store current values for next calculation
                 previousCPUInfo = cpuInfo
-                print("CPU Debug: Usage calculated: \(usage)%")
                 return usage
             }
             
             // Store current values for next calculation
             previousCPUInfo = cpuInfo
-            print("CPU Debug: Total is 0, first run - returning 0")
         } else {
-            print("CPU Debug: host_statistics failed with result: \(result)")
+            print(" CPU monitoring failed: host_statistics error \(result)")
         }
         
         return 0.0
@@ -709,10 +745,9 @@ class SystemMonitor: ObservableObject {
             let usedGB = used / Constants.gbDivisor
             let totalGB = Double(totalMemory) / Constants.gbDivisor
             
-            print("Memory Debug: Used: \(usedGB) GB, Total: \(totalGB) GB")
             return (used: usedGB, total: totalGB)
         } else {
-            print("Memory Debug: host_statistics64 failed with result: \(result)")
+            print(" Memory monitoring failed: host_statistics64 error \(result)")
         }
         
         return (used: 0.0, total: 0.0)
@@ -727,13 +762,10 @@ class SystemMonitor: ObservableObject {
                 let freeGB = Double(available) / Constants.gbDivisor
                 let totalGB = Double(total) / Constants.gbDivisor
                 
-                print("Disk Debug: Free: \(freeGB) GB, Total: \(totalGB) GB")
                 return (free: freeGB, total: totalGB)
-            } else {
-                print("Disk Debug: Resource values are nil")
             }
         } catch {
-            print("Disk Debug: Error getting disk usage: \(error)")
+            print(" Disk monitoring failed: \(error)")
         }
         
         return (free: 0.0, total: 0.0)
@@ -924,20 +956,14 @@ class SystemMonitor: ObservableObject {
         var bootTime = Date()
         var chipInfo = "Unknown"
         
-        print("SystemInfo Debug: Starting system info collection")
-        
         // Get model name and chip info in a single system_profiler call
         if let hardwareInfo = getHardwareInfo() {
             modelName = hardwareInfo.modelName
             chipInfo = hardwareInfo.chipInfo
-            print("SystemInfo Debug: Hardware info - Model: \(modelName), Chip: \(chipInfo)")
-        } else {
-            print("SystemInfo Debug: Failed to get hardware info")
         }
         
         // Get kernel version
         kernelVersion = executeCommand("/usr/sbin/sysctl", ["-n", "kern.version"])?.split(separator: "\n").first.map(String.init) ?? "Unknown"
-        print("SystemInfo Debug: Kernel version: \(kernelVersion)")
         
         // Get uptime using sysctl
         var mib = [CTL_KERN, KERN_BOOTTIME]
@@ -948,9 +974,6 @@ class SystemMonitor: ObservableObject {
         if result == 0 {
             bootTime = Date(timeIntervalSince1970: Double(boottime.tv_sec) + Double(boottime.tv_usec) / 1_000_000)
             uptime = Date().timeIntervalSince(bootTime)
-            print("SystemInfo Debug: Uptime: \(uptime) seconds")
-        } else {
-            print("SystemInfo Debug: Failed to get uptime, sysctl result: \(result)")
         }
         
         return SystemInfo(
@@ -997,6 +1020,18 @@ class SystemMonitor: ObservableObject {
         }
         
         return (modelName: modelName, chipInfo: chipInfo)
+    }
+    
+    private func getCurrentFanInfo() -> FanInfo {
+        let thermalInfo = TemperatureMonitor.getThermalInfo()
+        
+        return FanInfo(
+            rpm: thermalInfo.fanEstimate,
+            isEstimate: true, // Always true since we can't get real data without sudo
+            thermalState: thermalInfo.state,
+            thermalPressure: thermalInfo.pressure,
+            maxRPM: 6000.0 // Typical max for Apple Silicon Macs
+        )
     }
     
     private func getCurrentUPSInfo() -> UPSInfo {
@@ -1435,17 +1470,17 @@ class SystemMonitor: ObservableObject {
         ]
         
         for path in macmonPaths {
-            if FileManager.default.fileExists(atPath: path) {
-                // Try the pipe command with JSON output for a single sample
-                if let output = executeCommand(path, ["pipe", "-s", "1"]) {
-                    return parseMacmonJSONOutput(output)
-                }
+            guard FileManager.default.fileExists(atPath: path) else { continue }
+            
+            // Use the enhanced executeCommand with timeout
+            if let output = executeCommand(path, ["pipe", "-s", "1"]) {
+                return parseMacmonJSONOutput(output)
             }
         }
         
         return nil
     }
-    
+
     private func parseMacmonJSONOutput(_ output: String) -> PowerConsumptionInfo? {
         guard let data = output.data(using: .utf8) else { return nil }
         
@@ -1524,7 +1559,6 @@ class SystemMonitor: ObservableObject {
     private func checkAndNotifyUPSPowerChange() {
     }
     
-    // Helper function to execute commands
     private func executeCommand(_ executablePath: String, _ arguments: [String]) -> String? {
         let task = Process()
         let pipe = Pipe()
@@ -1534,52 +1568,40 @@ class SystemMonitor: ObservableObject {
         task.standardOutput = pipe
         
         do {
-            print("Command Debug: Executing \(executablePath) with args: \(arguments)")
+            #if DEBUG
+            // Uncomment next line only when debugging specific command issues
+            // print("Command Debug: Executing \(executablePath) with args: \(arguments)")
+            #endif
+            
             try task.run()
-            task.waitUntilExit()
+            
+            // Add timeout protection
+            let timeoutDate = Date().addingTimeInterval(10.0) // 10 second timeout
+            while task.isRunning && Date() < timeoutDate {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            
+            if task.isRunning {
+                print("⚠️ Command timeout: \(executablePath)")
+                task.terminate()
+                return nil
+            }
             
             guard task.terminationStatus == 0 else { 
-                print("Command Debug: Command failed with status: \(task.terminationStatus)")
+                // Only log failures, not successes
+                print("❌ Command failed: \(executablePath) (status: \(task.terminationStatus))")
                 return nil 
             }
             
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let result = String(data: data, encoding: .utf8)
-            print("Command Debug: Command succeeded, result length: \(result?.count ?? 0)")
+            
+            // Remove success logging - too verbose
             return result
         } catch {
-            print("Command Debug: Error executing command \(executablePath): \(error)")
+            print("❌ Error executing \(executablePath): \(error)")
             return nil
         }
-    }
-    
-    // func getBatteryDetails() -> (cycleCount: Int, maxCapacity: Int) { return (0, 100) }
-    
-    // Debug method to test individual components
-    func testSystemCalls() {
-        print("=== SystemMonitor Debug Test ===")
-        
-        // Test CPU
-        let cpu = getCurrentCPU()
-        print("CPU Test: \(cpu)%")
-        
-        // Test Memory
-        let memory = getCurrentMemory()
-        print("Memory Test: Used=\(memory.used)GB, Total=\(memory.total)GB")
-        
-        // Test Disk
-        let disk = getCurrentDisk()
-        print("Disk Test: Free=\(disk.free)GB, Total=\(disk.total)GB")
-        
-        // Test System Info
-        let sysInfo = getCurrentSystemInfo()
-        print("System Test: Model=\(sysInfo.modelName), Chip=\(sysInfo.chipInfo)")
-        
-        // Test basic system info
-        print("macOS Version: \(ProcessInfo.processInfo.operatingSystemVersionString)")
-        print("Physical Memory: \(ProcessInfo.processInfo.physicalMemory / (1000*1000*1000))GB")
-        
-        print("=== End Debug Test ===")
     }
     
     deinit {
