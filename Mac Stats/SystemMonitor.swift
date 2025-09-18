@@ -242,6 +242,8 @@ class SystemMonitor: ObservableObject {
         static let processCountThreshold = 5
         static let minCpuUsageFilter = 0.1
         static let minMemoryUsageFilter = 0.1
+        // Network interface assumptions: en2 is assumed to be WiFi to avoid interference with bonded interfaces (en0/en1)
+        static let preferredWiFiInterface = "en2"
     }
     
     // MARK: - Published Properties
@@ -275,6 +277,8 @@ class SystemMonitor: ObservableObject {
     private var lastUpdateTime: Date = Date()
     private var externalIPRefreshTimer: Timer?
     private var previousCPUInfo = host_cpu_load_info()
+    private var activeNetworkInterfaces: [String] = []
+    private var hasBondedInterfaces: Bool = false // Track if we have a bonded configuration
     weak var preferences: PreferencesManager? {
         didSet {
             // Update intervals when preferences are set
@@ -490,6 +494,10 @@ class SystemMonitor: ObservableObject {
         // More efficient parsing without regex
         let lines = output.split(separator: "\n")
         var interfaces: [String] = []
+        var activeInterfaces: [String] = []
+        var hasBond0 = false
+        var hasEn0 = false
+        var hasEn1 = false
         
         for line in lines {
             let trimmedLine = line.trimmingCharacters(in: .whitespaces)
@@ -501,23 +509,52 @@ class SystemMonitor: ObservableObject {
                 
                 let interfaceName = String(trimmedLine[..<colonIndex])
                 
+                // Track specific interfaces for bonding detection
+                if interfaceName == "bond0" {
+                    hasBond0 = true
+                    print("🔗 Detected bond0 interface")
+                }
+                if interfaceName == "en0" {
+                    hasEn0 = true
+                    print("🔗 Detected en0 interface")
+                }
+                if interfaceName == "en1" {
+                    hasEn1 = true
+                    print("🔗 Detected en1 interface")
+                }
+                
                 // Filter out loopback and inactive interfaces
                 if !interfaceName.hasPrefix("lo") && interfaceName != "gif0" && interfaceName != "stf0" {
                     interfaces.append(interfaceName)
+                    
+                    // Check if interface is active by looking for UP and RUNNING flags
+                    if trimmedLine.contains("UP") && trimmedLine.contains("RUNNING") {
+                        activeInterfaces.append(interfaceName)
+                        print("🔗 Active interface: \(interfaceName)")
+                    }
                 }
             }
         }
         
-        // Check if we have both en0 and en1, and if so, add a bond interface option
-        let hasEn0 = interfaces.contains("en0")
-        let hasEn1 = interfaces.contains("en1")
+        print("🔗 Bond detection - bond0: \(hasBond0), en0: \(hasEn0), en1: \(hasEn1)")
         
-        if hasEn0 && hasEn1 {
-            // Add bond0 as a virtual interface that combines en0 and en1
-            interfaces.append("bond0")
+        // Add a "Combined" interface option if we have multiple active interfaces
+        if activeInterfaces.count >= 2 {
+            interfaces.append("Combined")
         }
         
-        let sortedInterfaces = interfaces.sorted()
+        let sortedInterfaces = interfaces.sorted { interface1, interface2 in
+            // Sort "Combined" to the end, then sort the rest alphabetically
+            if interface1 == "Combined" {
+                return false
+            }
+            if interface2 == "Combined" {
+                return true
+            }
+            return interface1 < interface2
+        }
+        
+        print("🔗 Final sorted interfaces: \(sortedInterfaces)")
         
         // Thread-safe updates
         DispatchQueue.main.async {
@@ -525,22 +562,38 @@ class SystemMonitor: ObservableObject {
             self.previousInterfaceStats.removeAll()
             self.lastUpdateTime = Date()
             
+            // Store active interfaces for combined calculations
+            self.activeNetworkInterfaces = activeInterfaces
+            
+            // Store bonding information for special handling
+            self.hasBondedInterfaces = hasBond0 && hasEn0 && hasEn1
+            
             // Get initial stats for each interface
             DispatchQueue.global(qos: .userInitiated).async {
                 var initialStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
                 for interface in sortedInterfaces {
-                    if interface == "bond0" {
-                        // For bond interface, sum en0 and en1 stats
-                        var bondBytesIn: UInt64 = 0
-                        var bondBytesOut: UInt64 = 0
+                    if interface == "Combined" {
+                        // For combined interface, sum all active interfaces
+                        var combinedBytesIn: UInt64 = 0
+                        var combinedBytesOut: UInt64 = 0
                         
-                        for bondInterface in ["en0", "en1"] {
-                            let stats = self.getInterfaceStats(interface: bondInterface)
-                            bondBytesIn += stats.bytesIn
-                            bondBytesOut += stats.bytesOut
+                        for activeInterface in activeInterfaces {
+                            let stats = self.getInterfaceStats(interface: activeInterface)
+                            combinedBytesIn += stats.bytesIn
+                            combinedBytesOut += stats.bytesOut
                         }
                         
-                        initialStats[interface] = (bytesIn: bondBytesIn, bytesOut: bondBytesOut)
+                        initialStats[interface] = (bytesIn: combinedBytesIn, bytesOut: combinedBytesOut)
+                    } else if interface == "bond0" && self.hasBondedInterfaces {
+                        // For bond0, specifically sum en0 and en1
+                        let en0Stats = self.getInterfaceStats(interface: "en0")
+                        let en1Stats = self.getInterfaceStats(interface: "en1")
+                        
+                        let bondedBytesIn = en0Stats.bytesIn + en1Stats.bytesIn
+                        let bondedBytesOut = en0Stats.bytesOut + en1Stats.bytesOut
+                        
+                        initialStats[interface] = (bytesIn: bondedBytesIn, bytesOut: bondedBytesOut)
+                        print(" Bond0 detected: summing en0 and en1 traffic (In: \(bondedBytesIn), Out: \(bondedBytesOut))")
                     } else {
                         let stats = self.getInterfaceStats(interface: interface)
                         initialStats[interface] = stats
@@ -571,12 +624,15 @@ class SystemMonitor: ObservableObject {
                 // Parse the output to get bytes in/out
                 let lines = output.split(separator: "\n")
                 for line in lines {
-                    let components = line.split(separator: " ").map { String($0) }
-                    if components.count >= 7 && components[0] == interface {
-                        // Extract bytes in (6th column) and bytes out (9th column)
-                        if let bytesIn = UInt64(components[6]), let bytesOut = UInt64(components[9]) {
-                            return (bytesIn: bytesIn, bytesOut: bytesOut)
-                        }
+                    let components = line.split(separator: " ").compactMap { $0.isEmpty ? nil : String($0) }
+                    
+                    guard components.count >= 7 && components[0] == interface else {
+                        continue
+                    }
+                    
+                    // Extract bytes in (6th column) and bytes out (9th column)
+                    if let bytesIn = UInt64(components[6]), let bytesOut = UInt64(components[9]) {
+                        return (bytesIn: bytesIn, bytesOut: bytesOut)
                     }
                 }
             }
@@ -587,6 +643,19 @@ class SystemMonitor: ObservableObject {
         return (bytesIn: 0, bytesOut: 0)
     }
     
+    // Add debugging method to check interface status
+    private func debugInterfaceStats() {
+        guard hasBondedInterfaces else { return }
+        
+        print("🔍 Debugging bond interface stats:")
+        let interfaces = ["bond0", "en0", "en1"]
+        
+        for interface in interfaces {
+            let stats = getInterfaceStats(interface: interface)
+            print("🔍 \(interface): In=\(stats.bytesIn), Out=\(stats.bytesOut)")
+        }
+    }
+
     private func updateStats() {
         // Run updates on a background thread to avoid blocking the main thread
         DispatchQueue.global(qos: .userInitiated).async {
@@ -777,16 +846,47 @@ class SystemMonitor: ObservableObject {
         
         // Check which interface is selected
         let selectedInterface = preferences?.selectedNetworkInterface ?? "All"
+        print("🌐 Selected interface for monitoring: '\(selectedInterface)'")
         
         // Collect current stats for all interfaces
         var currentStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
         var totalBytesIn: UInt64 = 0
         var totalBytesOut: UInt64 = 0
         
-        // Get current stats for all interfaces
+        // Get current stats for all physical interfaces
         for interface in networkInterfaces {
-            if interface == "bond0" {
-                // Skip bond0 in the main loop since it's virtual
+            if interface == "Combined" {
+                // Skip Combined in the main loop since it's virtual
+                continue
+            }
+            
+            if interface == "bond0" && hasBondedInterfaces {
+                // For bond0, get its own stats directly rather than summing members
+                // This is because bonded member interfaces often don't report inbound stats correctly
+                let bond0Stats = getInterfaceStats(interface: "bond0")
+                let en0Stats = getInterfaceStats(interface: "en0")
+                let en1Stats = getInterfaceStats(interface: "en1")
+                
+                // Use bond0's inbound stats (which should be correct) and sum outbound from members
+                // If bond0 doesn't have good stats, fall back to summing members
+                let bondedBytesIn = bond0Stats.bytesIn > 0 ? bond0Stats.bytesIn : (en0Stats.bytesIn + en1Stats.bytesIn)
+                let bondedBytesOut = bond0Stats.bytesOut > 0 ? bond0Stats.bytesOut : (en0Stats.bytesOut + en1Stats.bytesOut)
+                
+                currentStats[interface] = (bytesIn: bondedBytesIn, bytesOut: bondedBytesOut)
+                totalBytesIn += bondedBytesIn
+                totalBytesOut += bondedBytesOut
+                
+                print("📊 Bond0 stats - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
+                print("📊 Bond0 stats - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
+                print("📊 Bond0 stats - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
+                print("📊 Bond0 stats - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
+                
+                // Don't double count en0 and en1 when bond0 is present
+                continue
+            }
+            
+            // Skip en0 and en1 if we're using bond0 (to avoid double counting)
+            if hasBondedInterfaces && (interface == "en0" || interface == "en1") && networkInterfaces.contains("bond0") {
                 continue
             }
             
@@ -796,19 +896,33 @@ class SystemMonitor: ObservableObject {
             totalBytesOut += stats.bytesOut
         }
         
-        // Handle bond0 virtual interface stats
-        if networkInterfaces.contains("bond0") {
-            var bondBytesIn: UInt64 = 0
-            var bondBytesOut: UInt64 = 0
+        // Handle Combined virtual interface stats
+        if networkInterfaces.contains("Combined") {
+            var combinedBytesIn: UInt64 = 0
+            var combinedBytesOut: UInt64 = 0
             
-            for bondInterface in ["en0", "en1"] {
-                if let stats = currentStats[bondInterface] {
-                    bondBytesIn += stats.bytesIn
-                    bondBytesOut += stats.bytesOut
+            // Sum all active interfaces for the combined stats
+            for activeInterface in activeNetworkInterfaces {
+                // Special handling: if bond0 exists, use it instead of en0/en1
+                if hasBondedInterfaces && (activeInterface == "en0" || activeInterface == "en1") && networkInterfaces.contains("bond0") {
+                    continue // Skip en0/en1 as they're already counted in bond0
+                }
+                
+                if activeInterface == "bond0" && hasBondedInterfaces {
+                    // For bond0 in combined calculation, sum en0 and en1
+                    let en0Stats = getInterfaceStats(interface: "en0")
+                    let en1Stats = getInterfaceStats(interface: "en1")
+                    
+                    combinedBytesIn += en0Stats.bytesIn + en1Stats.bytesIn
+                    combinedBytesOut += en0Stats.bytesOut + en1Stats.bytesOut
+                } else {
+                    let stats = getInterfaceStats(interface: activeInterface)
+                    combinedBytesIn += stats.bytesIn
+                    combinedBytesOut += stats.bytesOut
                 }
             }
             
-            currentStats["bond0"] = (bytesIn: bondBytesIn, bytesOut: bondBytesOut)
+            currentStats["Combined"] = (bytesIn: combinedBytesIn, bytesOut: combinedBytesOut)
         }
         
         // Calculate rates (bytes per second)
@@ -817,13 +931,13 @@ class SystemMonitor: ObservableObject {
             var bytesOutRate: Double = 0
             
             if selectedInterface == "All" {
-                // Calculate for all interfaces combined
+                // Calculate for all interfaces combined (exclude Combined to avoid double counting)
                 var previousTotalBytesIn: UInt64 = 0
                 var previousTotalBytesOut: UInt64 = 0
                 
                 for interface in networkInterfaces {
-                    if interface == "bond0" {
-                        continue // Skip bond0 to avoid double counting
+                    if interface == "Combined" {
+                        continue // Skip Combined to avoid double counting
                     }
                     
                     if let previous = previousInterfaceStats[interface] {
@@ -837,15 +951,44 @@ class SystemMonitor: ObservableObject {
                 
                 bytesInRate = Double(bytesInDiff) / timeInterval
                 bytesOutRate = Double(bytesOutDiff) / timeInterval
-            } else if selectedInterface == "bond0" {
-                // Special handling for bond interface - uses aggregated en0 + en1 stats
-                if let current = currentStats["bond0"],
-                   let previous = previousInterfaceStats["bond0"] {
+            } else if selectedInterface == "Combined" {
+                // Special handling for Combined interface - uses aggregated active interface stats
+                if let current = currentStats["Combined"],
+                   let previous = previousInterfaceStats["Combined"] {
                     let bytesInDiff = current.bytesIn >= previous.bytesIn ? (current.bytesIn - previous.bytesIn) : 0
                     let bytesOutDiff = current.bytesOut >= previous.bytesOut ? (current.bytesOut - previous.bytesOut) : 0
                     
                     bytesInRate = Double(bytesInDiff) / timeInterval
                     bytesOutRate = Double(bytesOutDiff) / timeInterval
+                }
+            } else if selectedInterface == "bond0" && hasBondedInterfaces {
+                // For bond0, try to get the most accurate stats
+                let bond0Stats = self.getInterfaceStats(interface: "bond0")
+                let en0Stats = self.getInterfaceStats(interface: "en0")
+                let en1Stats = self.getInterfaceStats(interface: "en1")
+                
+                // Use bond0's inbound stats if available, otherwise sum members
+                // Always sum outbound from members for accuracy
+                let bondedBytesIn = bond0Stats.bytesIn > 0 ? bond0Stats.bytesIn : (en0Stats.bytesIn + en1Stats.bytesIn)
+                let bondedBytesOut = bond0Stats.bytesOut > 0 ? bond0Stats.bytesOut : (en0Stats.bytesOut + en1Stats.bytesOut)
+                
+                currentStats[selectedInterface] = (bytesIn: bondedBytesIn, bytesOut: bondedBytesOut)
+                
+                print("🔗 Bond0 initial - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
+                print("🔗 Bond0 initial - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
+                print("🔗 Bond0 initial - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
+                print("🔗 Bond0 initial - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
+                
+                if let current = currentStats[selectedInterface],
+                   let previous = previousInterfaceStats[selectedInterface] {
+                    let bytesInDiff = current.bytesIn >= previous.bytesIn ? (current.bytesIn - previous.bytesIn) : 0
+                    let bytesOutDiff = current.bytesOut >= previous.bytesOut ? (current.bytesOut - previous.bytesOut) : 0
+                    
+                    bytesInRate = Double(bytesInDiff) / timeInterval
+                    bytesOutRate = Double(bytesOutDiff) / timeInterval
+                    
+                    print("📊 Bond0 rate calculation: In: \(bytesInRate) B/s, Out: \(bytesOutRate) B/s")
+                    print("📊 Bond0 differences: InDiff=\(bytesInDiff), OutDiff=\(bytesOutDiff), TimeInterval=\(timeInterval)")
                 }
             } else {
                 // Calculate for specific interface only
@@ -1582,14 +1725,14 @@ class SystemMonitor: ObservableObject {
             }
             
             if task.isRunning {
-                print("⚠️ Command timeout: \(executablePath)")
+                print(" Command timeout: \(executablePath)")
                 task.terminate()
                 return nil
             }
             
             guard task.terminationStatus == 0 else { 
                 // Only log failures, not successes
-                print("❌ Command failed: \(executablePath) (status: \(task.terminationStatus))")
+                print(" Command failed: \(executablePath) (status: \(task.terminationStatus))")
                 return nil 
             }
             
@@ -1599,7 +1742,7 @@ class SystemMonitor: ObservableObject {
             // Remove success logging - too verbose
             return result
         } catch {
-            print("❌ Error executing \(executablePath): \(error)")
+            print(" Error executing \(executablePath): \(error)")
             return nil
         }
     }

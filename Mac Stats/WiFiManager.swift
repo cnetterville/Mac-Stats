@@ -378,15 +378,20 @@ class WiFiManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     private func isWiFiLikelyActive() -> Bool {
         let activeInterfaces = getActiveNetworkInterfaces()
         
-        // Look for typical WiFi interface names on macOS
-        let wifiPatterns = ["en0", "en1", "en2"] // Common WiFi interface names
+        // Look for typical WiFi interface names on macOS, prioritizing en2 as WiFi
+        let wifiPatterns = ["en2", "en0", "en1"] // Prioritize en2 as WiFi interface
         
         for interface in activeInterfaces {
             // Check if this looks like a WiFi interface
             if wifiPatterns.contains(interface) {
-                // Additional check: en0 is usually WiFi on most Macs
-                if interface == "en0" {
-                    print("Interface \(interface) detected - likely WiFi (en0 is typically WiFi)")
+                // Check en2 first as it's now assumed to be WiFi
+                if interface == "en2" {
+                    print("Interface \(interface) detected - likely WiFi (en2 is configured as WiFi)")
+                    return true
+                }
+                // Fallback to en0/en1 if en2 is not available
+                else if interface == "en0" || interface == "en1" {
+                    print("Interface \(interface) detected - potential WiFi fallback")
                     return true
                 }
             }

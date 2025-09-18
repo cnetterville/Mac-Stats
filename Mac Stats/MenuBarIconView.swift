@@ -40,7 +40,7 @@ struct MenuBarIconView: View {
     }
     
     private func enabledStatsView() -> some View {
-        HStack(alignment: .center, spacing: -5) {
+        HStack(alignment: .center, spacing: 6) { // Changed from 7 to 6
             if preferences.showCPU && preferences.showMenuBarCPU {
                 cpuStatView()
             }
@@ -57,7 +57,7 @@ struct MenuBarIconView: View {
                 uptimeStatView()
             }
         }
-        .frame(maxWidth: 300) // Increased from 200 to 300
+        .frame(maxWidth: 400) // Increased from 300 to accommodate wider spacing
         .monospacedDigit()
     }
     
