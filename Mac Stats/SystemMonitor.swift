@@ -1700,6 +1700,109 @@ class SystemMonitor: ObservableObject {
     }
     
     private func checkAndNotifyUPSPowerChange() {
+        guard let preferences = preferences else { return }
+        
+        // Check if UPS power change notifications are enabled
+        guard preferences.upsPowerChangeNotificationEnabled else { return }
+        
+        // Check if email notifications are enabled
+        guard preferences.mailjetEmailEnabled else { return }
+        
+        // Check if we have UPS info and it's present
+        guard upsInfo.present else { return }
+        
+        // Get current power state (true = on AC/charging, false = on UPS battery)
+        let currentPowerState = upsInfo.powerSource == "AC Power"
+        
+        // Check if power state has changed
+        let powerStateChanged = previousUPSPowerState != currentPowerState
+        
+        // Only proceed if there's been a state change
+        guard powerStateChanged else {
+            return
+        }
+        
+        // Check cooldown period
+        if let lastNotification = lastUPSPowerNotificationTime {
+            let timeInterval = Date().timeIntervalSince(lastNotification)
+            guard timeInterval >= Constants.notificationCooldownPeriod else {
+                return
+            }
+        }
+        
+        // Send email notification
+        sendUPSPowerChangeEmailNotification(isPowerRestored: currentPowerState)
+        
+        // Update tracking variables
+        previousUPSPowerState = currentPowerState
+        lastUPSPowerNotificationTime = Date()
+    }
+    
+    private func sendUPSPowerChangeEmailNotification(isPowerRestored: Bool) {
+        guard let preferences = preferences else { return }
+        
+        let subject: String
+        let message: String
+        let timestamp = Date().formatted(date: .complete, time: .shortened)
+        let upsName = upsInfo.name != "Unknown" ? upsInfo.name : "UPS"
+        
+        if isPowerRestored {
+            // Power restored
+            subject = "🔌 UPS: AC Power Restored"
+            message = """
+            AC power has been restored to your system.
+            
+            UPS: \(upsName)
+            Battery Level: \(String(format: "%.0f", upsInfo.chargeLevel))%
+            Status: Power Restored
+            Time: \(timestamp)
+            
+            Your system is now running on AC power and the UPS battery is charging.
+            
+            This is an automated notification from Mac Stats.
+            """
+        } else {
+            // On battery power
+            subject = "⚠️ UPS: Running on Battery Power"
+            let timeRemainingText = upsInfo.timeRemaining > 0 ? 
+                String(format: "%.0f minutes", upsInfo.timeRemaining) : "Unknown"
+            
+            message = """
+            Your system is now running on UPS battery power.
+            
+            UPS: \(upsName)
+            Battery Level: \(String(format: "%.0f", upsInfo.chargeLevel))%
+            Estimated Runtime: \(timeRemainingText)
+            Status: On Battery
+            Time: \(timestamp)
+            
+            Please check your power connection. The system will shut down when the UPS battery is depleted.
+            
+            This is an automated notification from Mac Stats.
+            """
+        }
+        
+        // Use the "To" email if specified, otherwise use the "From" email
+        let toEmail = preferences.mailjetToEmail.isEmpty ? preferences.mailjetFromEmail : preferences.mailjetToEmail
+        
+        EmailService.shared.sendMailjetEmail(
+            apiKey: preferences.mailjetAPIKey,
+            apiSecret: preferences.mailjetAPISecret,
+            fromEmail: preferences.mailjetFromEmail,
+            fromName: preferences.mailjetFromName.isEmpty ? "Mac Stats" : preferences.mailjetFromName,
+            toEmail: toEmail,
+            subject: subject,
+            message: message
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    print("🔔 UPS power change notification sent successfully: \(response)")
+                case .failure(let error):
+                    print("❌ Failed to send UPS power change notification: \(error)")
+                }
+            }
+        }
     }
     
     private func executeCommand(_ executablePath: String, _ arguments: [String]) -> String? {
