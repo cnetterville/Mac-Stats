@@ -16,34 +16,8 @@ struct CardBasedStatsView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Mac Stats")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Spacer()
-                
-                HStack(spacing: 8) {
-                    Button(action: {
-                        print("Refresh button pressed - forcing data refresh")
-                        systemMonitor.refreshAllData()
-                        externalIPManager.refreshExternalIP()
-                        wifiManager.refreshWiFiInfo()
-                    }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.title2)
-                    }
-                    .help("Refresh Data")
-                    
-                    Button("Settings") {
-                        openWindow(id: "settings")
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color(NSColor.controlBackgroundColor))
+            // Header with glass effect
+            headerView
             
             // Content with two vertical columns
             ScrollView {
@@ -97,7 +71,7 @@ struct CardBasedStatsView: View {
             }
         }
         .frame(minWidth: 800, minHeight: 600)
-        .background(Color(NSColor.windowBackgroundColor))
+        .liquidGlassWindow(material: LiquidGlassTheme.windowMaterial)
         .onAppear {
             print("CardBasedStatsView appeared")
             print("Debug - Current CPU: \(systemMonitor.cpuUsage)")
@@ -114,46 +88,83 @@ struct CardBasedStatsView: View {
         }
     }
     
-    // MARK: - Card Views
+    // MARK: - Header View with Glass Effect
+    private var headerView: some View {
+        HStack {
+            Text("Mac Stats")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+                .glassTextVibrancy()
+            
+            Spacer()
+            
+            HStack(spacing: 8) {
+                GlassButton(action: {
+                    print("Refresh button pressed - forcing data refresh")
+                    systemMonitor.refreshAllData()
+                    externalIPManager.refreshExternalIP()
+                    wifiManager.refreshWiFiInfo()
+                }, material: .thin) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title2)
+                }
+                .help("Refresh Data")
+                
+                GlassButton(action: {
+                    openWindow(id: "settings")
+                }, material: .thin) {
+                    Text("Settings")
+                }
+            }
+        }
+        .glassToolbar(material: LiquidGlassTheme.headerMaterial)
+    }
+    
+    // MARK: - Card Views with Enhanced Glass Effects
     
     private func systemInfoCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "System Information", icon: "info.circle", color: .blue)
+                EnhancedCardHeaderView(title: "System Information", icon: "info.circle", color: .blue)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    InfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
-                    InfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
-                    InfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
-                    InfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
-                    InfoRowView(label: "Boot Time", value: formatBootTime(systemMonitor.systemInfo.bootTime))
+                    GlassInfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
+                    GlassInfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
+                    GlassInfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
+                    GlassInfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
+                    GlassInfoRowView(label: "Boot Time", value: formatBootTime(systemMonitor.systemInfo.bootTime))
                 }
             }
         }
     }
     
     private func cpuCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
+                EnhancedCardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
                 
                 VStack(alignment: .leading, spacing: 12) {
-                    // CPU Usage Progress with frequency info
+                    // CPU Usage Progress with enhanced glass styling
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Current Usage")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             Text(String(format: "%.1f%%", systemMonitor.cpuUsage))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
+                                .glassTextVibrancy()
                         }
                         
-                        ProgressView(value: systemMonitor.cpuUsage, total: 100)
-                            .tint(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
-                            .scaleEffect(y: 1.5)
+                        GlassProgressView(
+                            value: systemMonitor.cpuUsage,
+                            total: 100,
+                            color: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
+                            height: 8
+                        )
                     }
                     
                     // CPU Info Row
@@ -162,10 +173,12 @@ struct CardBasedStatsView: View {
                             Image(systemName: "cpu.fill")
                                 .foregroundColor(.orange)
                                 .font(.caption)
+                                .glassTextVibrancy()
                             Text(systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
+                                .glassTextVibrancy()
                         }
                         
                         Spacer()
@@ -174,42 +187,49 @@ struct CardBasedStatsView: View {
                             Image(systemName: "clock")
                                 .foregroundColor(.blue)
                                 .font(.caption)
+                                .glassTextVibrancy()
                             Text("Multi-core")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                         }
                     }
                     
                     // CPU Sparkline with enhanced info
                     if !systemMonitor.cpuHistory.isEmpty {
                         Divider()
+                            .opacity(0.5)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Image(systemName: "chart.line.uptrend.xyaxis")
                                     .foregroundColor(.orange)
                                     .font(.caption)
+                                    .glassTextVibrancy()
                                 Text("Usage Trend")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 Spacer()
                                 
                                 let avgUsage = systemMonitor.cpuHistory.reduce(0, +) / Double(systemMonitor.cpuHistory.count)
                                 let maxUsage = systemMonitor.cpuHistory.max() ?? 0
                                 
                                 VStack(alignment: .trailing, spacing: 1) {
-                                    Text("Avg: \(String(format: "*.1f%%", avgUsage))")
+                                    Text("Avg: \(String(format: "%.1f%%", avgUsage))")
                                         .font(.caption)
                                         .monospacedDigit()
                                         .foregroundColor(.secondary)
+                                        .glassTextVibrancy()
                                     Text("Peak: \(String(format: "%.1f%%", maxUsage))")
                                         .font(.caption)
                                         .monospacedDigit()
                                         .foregroundColor(usageColor(for: maxUsage, thresholds: (30, 70)))
+                                        .glassTextVibrancy()
                                 }
                             }
                             
-                            SparklineView(
+                            GlassSparklineView(
                                 data: systemMonitor.cpuHistory,
                                 lineColor: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
                                 lineWidth: 2
@@ -221,15 +241,18 @@ struct CardBasedStatsView: View {
                     // CPU Temperature (if enabled) with enhanced sparkline
                     if preferences.showCPUTemperature {
                         Divider()
+                            .opacity(0.5)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Image(systemName: "thermometer")
                                     .foregroundColor(.red)
                                     .font(.subheadline)
+                                    .glassTextVibrancy()
                                 Text("Temperature")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 Spacer()
                                 
                                 VStack(alignment: .trailing, spacing: 2) {
@@ -240,13 +263,15 @@ struct CardBasedStatsView: View {
                                         .fontWeight(.semibold)
                                         .monospacedDigit()
                                         .foregroundColor(temperatureColor(for: systemMonitor.cpuTemperature))
+                                        .glassTextVibrancy()
                                     
                                     // Temperature sparkline
                                     if !systemMonitor.cpuTemperatureHistory.isEmpty {
-                                        SparklineView(
+                                        GlassSparklineView(
                                             data: systemMonitor.cpuTemperatureHistory,
                                             lineColor: temperatureColor(for: systemMonitor.cpuTemperature),
-                                            lineWidth: 1.5
+                                            lineWidth: 1.5,
+                                            fillGradient: false
                                         )
                                         .frame(width: 80, height: 20)
                                     }
@@ -258,16 +283,20 @@ struct CardBasedStatsView: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundColor(.green)
                                         .font(.caption)
+                                        .glassTextVibrancy()
                                     Text("Real sensors")
                                         .font(.caption)
                                         .foregroundColor(.green)
+                                        .glassTextVibrancy()
                                 } else {
                                     Image(systemName: "info.circle.fill")
                                         .foregroundColor(.blue)
                                         .font(.caption)
+                                        .glassTextVibrancy()
                                     Text("Estimated")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
+                                        .glassTextVibrancy()
                                 }
                                 
                                 Spacer()
@@ -282,19 +311,22 @@ struct CardBasedStatsView: View {
                                             .font(.caption)
                                             .monospacedDigit()
                                             .foregroundColor(.secondary)
+                                            .glassTextVibrancy()
                                         Text("Peak: \(TemperatureMonitor.formatTemperature(maxTemp, unit: preferences.temperatureUnit, showBoth: false))")
                                             .font(.caption)
                                             .monospacedDigit()
                                             .foregroundColor(temperatureColor(for: maxTemp))
+                                            .glassTextVibrancy()
                                     }
                                 }
                                 
                                 if TemperatureMonitor.shouldSuggestToolInstallation() {
-                                    Button("Install macmon") {
+                                    GlassButton(action: {
                                         showMacmonInstallation()
+                                    }, material: .ultraThin) {
+                                        Text("Install macmon")
+                                            .font(.caption)
                                     }
-                                    .font(.caption)
-                                    .foregroundColor(.blue)
                                 }
                             }
                         }
@@ -302,15 +334,18 @@ struct CardBasedStatsView: View {
                     
                     // Fan Speed Information
                     Divider()
+                        .opacity(0.5)
                     
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Image(systemName: "fan")
                                 .foregroundColor(.blue)
                                 .font(.subheadline)
+                                .glassTextVibrancy()
                             Text("Fan Speed")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             
                             VStack(alignment: .trailing, spacing: 2) {
@@ -319,11 +354,13 @@ struct CardBasedStatsView: View {
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
+                                    .glassTextVibrancy()
                                 
                                 if systemMonitor.fanInfo.isEstimate {
                                     Text("Estimated")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
+                                        .glassTextVibrancy()
                                 }
                             }
                         }
@@ -333,9 +370,11 @@ struct CardBasedStatsView: View {
                                 Image(systemName: getThermalPressureIcon(for: systemMonitor.fanInfo.thermalState))
                                     .foregroundColor(getThermalPressureColor(for: systemMonitor.fanInfo.thermalState))
                                     .font(.caption)
+                                    .glassTextVibrancy()
                                 Text("Thermal: \(systemMonitor.fanInfo.thermalPressure)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             Spacer()
@@ -344,38 +383,46 @@ struct CardBasedStatsView: View {
                                 .font(.caption)
                                 .monospacedDigit()
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                         }
                         
-                        // Mini fan speed progress bar
-                        ProgressView(value: systemMonitor.fanInfo.rpm, total: systemMonitor.fanInfo.maxRPM)
-                            .tint(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
-                            .scaleEffect(y: 0.8)
+                        // Mini fan speed progress bar with glass effect
+                        GlassProgressView(
+                            value: systemMonitor.fanInfo.rpm,
+                            total: systemMonitor.fanInfo.maxRPM,
+                            color: fanSpeedColor(for: systemMonitor.fanInfo.rpm),
+                            height: 6
+                        )
                     }
                     
                     // Top CPU Processes with enhanced display
                     if !systemMonitor.topProcesses.isEmpty {
                         Divider()
+                            .opacity(0.5)
                         
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Image(systemName: "list.bullet")
                                     .foregroundColor(.orange)
                                     .font(.caption)
+                                    .glassTextVibrancy()
                                 Text("Top CPU Processes")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 Spacer()
                                 
                                 Text("\(systemMonitor.topProcesses.count) of \(systemMonitor.topProcesses.count) shown")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                     .opacity(0.7)
+                                    .glassTextVibrancy()
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
                                 if systemMonitor.initialDataLoaded {
                                     ForEach(systemMonitor.topProcesses.prefix(5)) { process in
-                                        enhancedProcessRowView(process: process, isCPUView: true)
+                                        enhancedGlassProcessRowView(process: process, isCPUView: true)
                                     }
                                 } else {
                                     Text("Loading...")
@@ -383,6 +430,7 @@ struct CardBasedStatsView: View {
                                         .foregroundColor(.secondary)
                                         .frame(maxWidth: .infinity, alignment: .center)
                                         .padding(.vertical, 10)
+                                        .glassTextVibrancy()
                                 }
                             }
                         }
@@ -393,9 +441,9 @@ struct CardBasedStatsView: View {
     }
     
     private func memoryCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
+                EnhancedCardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
                 
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -403,16 +451,21 @@ struct CardBasedStatsView: View {
                             Text("Used Memory")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             Text(String(format: "%.1f GB / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
+                                .glassTextVibrancy()
                         }
                         
-                        ProgressView(value: systemMonitor.memoryUsage.used, total: systemMonitor.memoryUsage.total)
-                            .tint(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
-                            .scaleEffect(y: 1.5)
+                        GlassProgressView(
+                            value: systemMonitor.memoryUsage.used,
+                            total: systemMonitor.memoryUsage.total,
+                            color: memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100),
+                            height: 8
+                        )
                     }
                     
                     // Enhanced memory breakdown
@@ -422,9 +475,11 @@ struct CardBasedStatsView: View {
                                 Circle()
                                     .fill(Color.green)
                                     .frame(width: 8, height: 8)
+                                    .glassTextVibrancy()
                                 Text("Free")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             Spacer()
@@ -437,10 +492,12 @@ struct CardBasedStatsView: View {
                                     .font(.caption)
                                     .monospacedDigit()
                                     .foregroundColor(.green)
+                                    .glassTextVibrancy()
                                 Text(String(format: "%.1f%%", freePercent))
                                     .font(.caption2)
                                     .monospacedDigit()
                                     .foregroundColor(.green)
+                                    .glassTextVibrancy()
                             }
                         }
                         
@@ -449,9 +506,11 @@ struct CardBasedStatsView: View {
                                 Circle()
                                     .fill(Color.blue)
                                     .frame(width: 8, height: 8)
+                                    .glassTextVibrancy()
                                 Text("Used")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             Spacer()
@@ -464,10 +523,12 @@ struct CardBasedStatsView: View {
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(.blue)
+                                    .glassTextVibrancy()
                                 Text(String(format: "%.1f%%", usedPercent))
                                     .font(.caption2)
                                     .monospacedDigit()
                                     .foregroundColor(.blue)
+                                    .glassTextVibrancy()
                             }
                         }
                         
@@ -477,9 +538,11 @@ struct CardBasedStatsView: View {
                                 Circle()
                                     .fill(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                                     .frame(width: 8, height: 8)
+                                    .glassTextVibrancy()
                                 Text("Pressure")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             Spacer()
@@ -488,21 +551,25 @@ struct CardBasedStatsView: View {
                                 .font(.caption)
                                 .fontWeight(.medium)
                                 .foregroundColor(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
+                                .glassTextVibrancy()
                         }
                     }
                     
                     // Top Memory Processes with enhanced display
                     if !systemMonitor.topMemoryProcesses.isEmpty {
                         Divider()
+                            .opacity(0.5)
                         
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Image(systemName: "list.bullet")
                                     .foregroundColor(.blue)
                                     .font(.caption)
+                                    .glassTextVibrancy()
                                 Text("Top Memory Processes")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 Spacer()
                                 
                                 let totalMemUsage = systemMonitor.topMemoryProcesses.prefix(5).reduce(0) { $0 + $1.memoryUsage }
@@ -511,12 +578,13 @@ struct CardBasedStatsView: View {
                                     .foregroundColor(.secondary)
                                     .opacity(0.7)
                                     .monospacedDigit()
+                                    .glassTextVibrancy()
                             }
                             
                             VStack(alignment: .leading, spacing: 6) {
                                 if systemMonitor.initialDataLoaded {
                                     ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
-                                        enhancedProcessRowView(process: process, isCPUView: false)
+                                        enhancedGlassProcessRowView(process: process, isCPUView: false)
                                     }
                                 } else {
                                     Text("Loading...")
@@ -524,6 +592,7 @@ struct CardBasedStatsView: View {
                                         .foregroundColor(.secondary)
                                         .frame(maxWidth: .infinity, alignment: .center)
                                         .padding(.vertical, 10)
+                                        .glassTextVibrancy()
                                 }
                             }
                         }
@@ -534,9 +603,9 @@ struct CardBasedStatsView: View {
     }
     
     private func networkCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Network Activity", icon: "network", color: .green)
+                EnhancedCardHeaderView(title: "Network Activity", icon: "network", color: .green)
                 
                 VStack(alignment: .leading, spacing: 8) {
                     let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
@@ -550,9 +619,11 @@ struct CardBasedStatsView: View {
                                 Image(systemName: "arrow.up.circle.fill")
                                     .foregroundColor(.red)
                                     .font(.subheadline)
+                                    .glassTextVibrancy()
                                 Text("Upload")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             HStack {
@@ -561,12 +632,13 @@ struct CardBasedStatsView: View {
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(.red)
+                                    .glassTextVibrancy()
                                 
                                 Spacer()
                                 
                                 // Upload sparkline
                                 if !systemMonitor.uploadHistory.isEmpty {
-                                    SparklineView(
+                                    GlassSparklineView(
                                         data: systemMonitor.uploadHistory.map { $0 / 1000 }, // Convert to KB for better scale
                                         lineColor: .red,
                                         lineWidth: 1.5
@@ -577,6 +649,7 @@ struct CardBasedStatsView: View {
                         }
                         
                         Divider()
+                            .opacity(0.5)
                             .frame(height: 50)
                         
                         VStack(alignment: .leading, spacing: 4) {
@@ -584,9 +657,11 @@ struct CardBasedStatsView: View {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .foregroundColor(.blue)
                                     .font(.subheadline)
+                                    .glassTextVibrancy()
                                 Text("Download")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             HStack {
@@ -595,12 +670,13 @@ struct CardBasedStatsView: View {
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(.blue)
+                                    .glassTextVibrancy()
                                 
                                 Spacer()
                                 
                                 // Download sparkline
                                 if !systemMonitor.downloadHistory.isEmpty {
-                                    SparklineView(
+                                    GlassSparklineView(
                                         data: systemMonitor.downloadHistory.map { $0 / 1000 }, // Convert to KB for better scale
                                         lineColor: .blue,
                                         lineWidth: 1.5
@@ -614,12 +690,14 @@ struct CardBasedStatsView: View {
                     // Peak speeds
                     if !systemMonitor.uploadHistory.isEmpty || !systemMonitor.downloadHistory.isEmpty {
                         Divider()
+                            .opacity(0.5)
                         
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Peak Speeds")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 
                                 HStack {
                                     if let maxUpload = systemMonitor.uploadHistory.max() {
@@ -628,6 +706,7 @@ struct CardBasedStatsView: View {
                                             .font(.caption)
                                             .monospacedDigit()
                                             .foregroundColor(.red)
+                                            .glassTextVibrancy()
                                     }
                                     
                                     if let maxDownload = systemMonitor.downloadHistory.max() {
@@ -636,6 +715,7 @@ struct CardBasedStatsView: View {
                                             .font(.caption)
                                             .monospacedDigit()
                                             .foregroundColor(.blue)
+                                            .glassTextVibrancy()
                                     }
                                 }
                             }
@@ -646,6 +726,7 @@ struct CardBasedStatsView: View {
                                 Text("Average")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 
                                 HStack {
                                     if !systemMonitor.uploadHistory.isEmpty {
@@ -655,6 +736,7 @@ struct CardBasedStatsView: View {
                                             .font(.caption)
                                             .monospacedDigit()
                                             .foregroundColor(.red)
+                                            .glassTextVibrancy()
                                     }
                                     
                                     if !systemMonitor.downloadHistory.isEmpty {
@@ -664,6 +746,7 @@ struct CardBasedStatsView: View {
                                             .font(.caption)
                                             .monospacedDigit()
                                             .foregroundColor(.blue)
+                                            .glassTextVibrancy()
                                     }
                                 }
                             }
@@ -673,26 +756,32 @@ struct CardBasedStatsView: View {
                     // External IP with enhanced info
                     if !externalIPManager.externalIP.isEmpty {
                         Divider()
+                            .opacity(0.5)
                         HStack {
                             Image(systemName: "globe")
                                 .foregroundColor(.green)
                                 .font(.subheadline)
+                                .glassTextVibrancy()
                             Text("External IP")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             HStack(spacing: 6) {
                                 Text(externalIPManager.flagEmoji)
                                     .font(.title3)
+                                    .glassTextVibrancy()
                                 VStack(alignment: .trailing, spacing: 1) {
                                     Text(externalIPManager.externalIP)
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                         .monospacedDigit()
+                                        .glassTextVibrancy()
                                     if !externalIPManager.countryName.isEmpty {
                                         Text(externalIPManager.countryName)
                                             .font(.caption2)
                                             .foregroundColor(.secondary)
+                                            .glassTextVibrancy()
                                     }
                                 }
                             }
@@ -704,9 +793,9 @@ struct CardBasedStatsView: View {
     }
     
     private func diskCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
+                EnhancedCardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
                 
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -714,16 +803,21 @@ struct CardBasedStatsView: View {
                             Text("Used Space")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             Text(String(format: "%.0f GB / %.0f GB", systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, systemMonitor.diskUsage.total))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
+                                .glassTextVibrancy()
                         }
                         
-                        ProgressView(value: systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, total: systemMonitor.diskUsage.total)
-                            .tint(.purple)
-                            .scaleEffect(y: 1.5)
+                        GlassProgressView(
+                            value: systemMonitor.diskUsage.total - systemMonitor.diskUsage.free,
+                            total: systemMonitor.diskUsage.total,
+                            color: .purple,
+                            height: 8
+                        )
                     }
                     
                     HStack {
@@ -731,15 +825,18 @@ struct CardBasedStatsView: View {
                             Circle()
                                 .fill(Color.green)
                                 .frame(width: 8, height: 8)
+                                .glassTextVibrancy()
                             Text("Free")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                         }
                         Spacer()
                         Text(String(format: "%.0f GB", systemMonitor.diskUsage.free))
                             .font(.caption)
                             .monospacedDigit()
                             .foregroundColor(.green)
+                            .glassTextVibrancy()
                     }
                     
                     HStack {
@@ -747,15 +844,18 @@ struct CardBasedStatsView: View {
                             Circle()
                                 .fill(Color.purple)
                                 .frame(width: 8, height: 8)
+                                .glassTextVibrancy()
                             Text("Used")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                         }
                         Spacer()
                         Text(String(format: "%.1f%% (%.0f GB)", ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100, systemMonitor.diskUsage.total - systemMonitor.diskUsage.free))
                             .font(.caption)
                             .monospacedDigit()
                             .foregroundColor(.purple)
+                            .glassTextVibrancy()
                     }
                 }
             }
@@ -763,24 +863,27 @@ struct CardBasedStatsView: View {
     }
     
     private func powerConsumptionCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
+                EnhancedCardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
                 
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "power")
                             .foregroundColor(.yellow)
                             .font(.subheadline)
+                            .glassTextVibrancy()
                         Text("Total System")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+                            .glassTextVibrancy()
                         Spacer()
                         Text(String(format: "%.2f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
                             .font(.subheadline)
                             .fontWeight(.semibold)
                             .monospacedDigit()
                             .foregroundColor(.yellow)
+                            .glassTextVibrancy()
                     }
                     
                     if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
@@ -796,9 +899,11 @@ struct CardBasedStatsView: View {
                             Image(systemName: "info.circle")
                                 .foregroundColor(.secondary)
                                 .font(.caption)
+                                .glassTextVibrancy()
                             Text("Estimated based on system load")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                         }
                     }
@@ -808,9 +913,9 @@ struct CardBasedStatsView: View {
     }
     
     private func batteryCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Battery Status", icon: getBatteryIconName(), color: getBatteryIconColor())
+                EnhancedCardHeaderView(title: "Battery Status", icon: getBatteryIconName(), color: getBatteryIconColor())
                 
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -818,16 +923,21 @@ struct CardBasedStatsView: View {
                             Text("Charge Level")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             Text(String(format: "%.0f%%", systemMonitor.batteryInfo.chargeLevel))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
+                                .glassTextVibrancy()
                         }
                         
-                        ProgressView(value: systemMonitor.batteryInfo.chargeLevel, total: 100)
-                            .tint(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
-                            .scaleEffect(y: 1.5)
+                        GlassProgressView(
+                            value: systemMonitor.batteryInfo.chargeLevel,
+                            total: 100,
+                            color: batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel),
+                            height: 8
+                        )
                     }
                     
                     InfoRowView(label: "Cycle Count", value: "\(systemMonitor.batteryInfo.cycleCount)")
@@ -843,9 +953,9 @@ struct CardBasedStatsView: View {
     }
     
     private func upsCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "UPS Status", icon: getUPSIconName(), color: getUPSIconColor())
+                EnhancedCardHeaderView(title: "UPS Status", icon: getUPSIconName(), color: getUPSIconColor())
                 
                 VStack(alignment: .leading, spacing: 12) {
                     if systemMonitor.upsInfo.present && systemMonitor.upsInfo.chargeLevel > 0 {
@@ -855,16 +965,21 @@ struct CardBasedStatsView: View {
                                 Text("Charge Level")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 Spacer()
                                 Text(String(format: "%.0f%%", systemMonitor.upsInfo.chargeLevel))
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
+                                    .glassTextVibrancy()
                             }
                             
-                            ProgressView(value: systemMonitor.upsInfo.chargeLevel, total: 100)
-                                .tint(upsChargeColor(for: systemMonitor.upsInfo.chargeLevel))
-                                .scaleEffect(y: 1.5)
+                            GlassProgressView(
+                                value: systemMonitor.upsInfo.chargeLevel,
+                                total: 100,
+                                color: upsChargeColor(for: systemMonitor.upsInfo.chargeLevel),
+                                height: 8
+                            )
                         }
                         
                         InfoRowView(label: "Name", value: systemMonitor.upsInfo.name)
@@ -880,11 +995,13 @@ struct CardBasedStatsView: View {
                             Text("Charging")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             Text(systemMonitor.upsInfo.isCharging ? "Yes" : "No")
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(systemMonitor.upsInfo.isCharging ? .red : .green)
+                                .glassTextVibrancy()
                         }
                     } else {
                         // Basic power source info
@@ -901,9 +1018,9 @@ struct CardBasedStatsView: View {
     }
     
     private func wifiCard() -> some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(
+                EnhancedCardHeaderView(
                     title: "WiFi Status", 
                     icon: wifiManager.getWiFiIconName(), 
                     color: getWiFiCardColor()
@@ -916,17 +1033,20 @@ struct CardBasedStatsView: View {
                             Text("Network")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             Text(wifiManager.wifiInfo.networkName)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.primary)
+                                .glassTextVibrancy()
                         }
                         
                         HStack {
                             Text("Signal Strength")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                             Spacer()
                             HStack(spacing: 4) {
                                 Text("\(wifiManager.wifiInfo.signalStrength) dBm")
@@ -934,10 +1054,12 @@ struct CardBasedStatsView: View {
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                    .glassTextVibrancy()
                                 
                                 Text("(\(wifiManager.getSignalStrengthPercentage())%)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                         }
                         
@@ -947,16 +1069,21 @@ struct CardBasedStatsView: View {
                                 Text("Signal Quality")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                                 Spacer()
                                 Text(wifiManager.getSignalStrengthDescription())
                                     .font(.caption)
                                     .fontWeight(.semibold)
                                     .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                    .glassTextVibrancy()
                             }
                             
-                            ProgressView(value: Double(wifiManager.getSignalStrengthPercentage()), total: 100)
-                                .tint(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
-                                .scaleEffect(y: 1.2)
+                            GlassProgressView(
+                                value: Double(wifiManager.getSignalStrengthPercentage()),
+                                total: 100,
+                                color: getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength),
+                                height: 8
+                            )
                         }
                         
                         InfoRowView(
@@ -972,22 +1099,26 @@ struct CardBasedStatsView: View {
                                 Image(systemName: "exclamationmark.triangle.fill")
                                     .foregroundColor(.orange)
                                     .font(.subheadline)
+                                    .glassTextVibrancy()
                                 Text("Permission Required")
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.orange)
+                                    .glassTextVibrancy()
                             }
                             
                             Text("WiFi information requires additional system permissions to access network details.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
+                                .glassTextVibrancy()
                             
                             if let errorMessage = wifiManager.wifiInfo.errorMessage {
                                 Text(errorMessage)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                                     .italic()
+                                    .glassTextVibrancy()
                             }
                         }
                         
@@ -998,33 +1129,38 @@ struct CardBasedStatsView: View {
                                 Image(systemName: "wifi.slash")
                                     .foregroundColor(.secondary)
                                     .font(.subheadline)
+                                    .glassTextVibrancy()
                                 Text("Not Connected")
                                     .font(.subheadline)
                                     .fontWeight(.semibold)
                                     .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
                             }
                             
                             Text("Connect to a WiFi network to see detailed information.")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                                .glassTextVibrancy()
                         }
                     }
                     
                     // Refresh button and status
                     Divider()
+                        .opacity(0.5)
                     
                     HStack {
-                        Button(action: {
+                        GlassButton(action: {
                             wifiManager.refreshWiFiInfo()
-                        }) {
+                        }, material: .ultraThin) {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.clockwise")
                                     .font(.caption)
+                                    .glassTextVibrancy()
                                 Text("Refresh")
                                     .font(.caption)
+                                    .glassTextVibrancy()
                             }
                         }
-                        .buttonStyle(.plain)
                         .foregroundColor(.blue)
                         
                         Spacer()
@@ -1032,15 +1168,16 @@ struct CardBasedStatsView: View {
                         Text("Status: \(wifiManager.wifiInfo.hasPermission ? "Active" : "Limited")")
                             .font(.caption2)
                             .foregroundColor(.secondary)
+                            .glassTextVibrancy()
                     }
                 }
             }
         }
     }
     
-    // MARK: - Enhanced Helper Views
+    // MARK: - Enhanced Helper Views with Glass Effects
     
-    private func enhancedProcessRowView(process: SystemProcessInfo, isCPUView: Bool) -> some View {
+    private func enhancedGlassProcessRowView(process: SystemProcessInfo, isCPUView: Bool) -> some View {
         HStack {
             HStack(spacing: 6) {
                 // Process type indicator
@@ -1048,11 +1185,13 @@ struct CardBasedStatsView: View {
                     .foregroundColor(getProcessIconColor(for: process.name))
                     .font(.caption)
                     .frame(width: 12)
+                    .glassTextVibrancy()
                 
                 Text(process.name)
                     .font(.caption)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .glassTextVibrancy()
             }
             
             Spacer()
@@ -1065,11 +1204,11 @@ struct CardBasedStatsView: View {
                 .foregroundColor(usageColor(for: isCPUView ? process.cpuUsage : process.memoryUsage, 
                                           thresholds: isCPUView ? (30, 70) : (5, 15)))
                 .frame(width: 45, alignment: .trailing)
+                .glassTextVibrancy()
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        .cornerRadius(6)
+        .liquidGlass(material: .ultraThin, cornerRadius: 6, shadowRadius: 2, shadowOpacity: 0.1)
     }
     
     // MARK: - Helper Functions

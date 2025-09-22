@@ -69,10 +69,9 @@ struct TabbedStatsView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 12)
             }
-            .background(Color(NSColor.windowBackgroundColor))
         }
         .frame(minWidth: 600, minHeight: 500)
-        .background(Color(NSColor.windowBackgroundColor))
+        .liquidGlassWindow(material: LiquidGlassTheme.windowMaterial)
         .onAppear {
             print("TabbedStatsView appeared")
             if !systemMonitor.initialDataLoaded {
@@ -87,45 +86,46 @@ struct TabbedStatsView: View {
             Text("Mac Stats")
                 .font(.largeTitle)
                 .fontWeight(.bold)
+                .glassTextVibrancy()
             
             Spacer()
             
             HStack(spacing: 8) {
-                Button(action: {
+                GlassButton(action: {
                     print("Refresh button pressed - forcing data refresh")
                     systemMonitor.refreshAllData()
                     externalIPManager.refreshExternalIP()
                     wifiManager.refreshWiFiInfo()
-                }) {
+                }, material: .thin) {
                     Image(systemName: "arrow.clockwise")
                         .font(.title2)
                 }
                 .help("Refresh Data")
                 
-                Button("Settings") {
+                GlassButton(action: {
                     openWindow(id: "settings")
+                }, material: .thin) {
+                    Text("Settings")
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(NSColor.controlBackgroundColor))
+        .glassToolbar(material: LiquidGlassTheme.headerMaterial)
     }
     
     private var categoryPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(StatsCategory.allCases, id: \.self) { category in
-                    categoryButton(for: category)
+                    glassCategoryButton(for: category)
                 }
             }
             .padding(.horizontal, 16)
         }
         .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        .liquidGlass(material: .headerView, cornerRadius: 0, shadowRadius: 4, shadowOpacity: 0.1)
     }
     
-    private func categoryButton(for category: StatsCategory) -> some View {
+    private func glassCategoryButton(for category: StatsCategory) -> some View {
         Button(action: {
             // Temporarily disable menu bar updates during tab transition to prevent SwiftUI warnings
             imageManager.temporarilyDisableUpdates()
@@ -134,25 +134,29 @@ struct TabbedStatsView: View {
             HStack(spacing: 6) {
                 Image(systemName: category.icon)
                     .font(.caption)
+                    .glassTextVibrancy()
                 Text(category.rawValue)
                     .font(.caption)
                     .fontWeight(.medium)
+                    .glassTextVibrancy()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(selectedCategory == category ? category.color.opacity(0.2) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(selectedCategory == category ? category.color : Color.gray.opacity(0.3), lineWidth: 1)
+            .liquidGlass(
+                material: selectedCategory == category ? .thin : .ultraThin,
+                cornerRadius: 16,
+                shadowRadius: selectedCategory == category ? 6 : 2,
+                shadowOpacity: selectedCategory == category ? 0.2 : 0.1,
+                borderWidth: selectedCategory == category ? 1 : 0.5,
+                borderOpacity: selectedCategory == category ? 0.3 : 0.1
             )
             .foregroundColor(selectedCategory == category ? category.color : .secondary)
+            .scaleEffect(selectedCategory == category ? 1.05 : 1.0)
+            .animation(.easeInOut(duration: 0.2), value: selectedCategory == category)
         }
         .buttonStyle(.plain)
     }
-    
+
     @ViewBuilder
     private func contentForCategory(_ category: StatsCategory) -> some View {
         switch category {
@@ -174,7 +178,7 @@ struct TabbedStatsView: View {
     private var overviewContent: some View {
         VStack(spacing: 12) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
-                CompactStatsCard(
+                EnhancedCompactStatsCard(
                     title: "CPU Usage",
                     value: String(format: "%.1f%%", systemMonitor.cpuUsage),
                     icon: "cpu",
@@ -182,7 +186,7 @@ struct TabbedStatsView: View {
                     subtitle: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo
                 )
                 
-                CompactStatsCard(
+                EnhancedCompactStatsCard(
                     title: "Memory Usage",
                     value: String(format: "%.1f%%", systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100),
                     icon: "memorychip",
@@ -190,7 +194,7 @@ struct TabbedStatsView: View {
                     subtitle: String(format: "%.1f / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total)
                 )
                 
-                CompactStatsCard(
+                EnhancedCompactStatsCard(
                     title: "Disk Usage",
                     value: String(format: "%.1f%%", ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100),
                     icon: "internaldrive",
@@ -201,7 +205,7 @@ struct TabbedStatsView: View {
             
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 12) {
                 if wifiManager.wifiInfo.isConnected {
-                    CompactStatsCard(
+                    EnhancedCompactStatsCard(
                         title: "WiFi",
                         value: wifiManager.wifiInfo.networkName,
                         icon: "wifi",
@@ -209,7 +213,7 @@ struct TabbedStatsView: View {
                         subtitle: "\(wifiManager.wifiInfo.signalStrength) dBm"
                     )
                 } else if !wifiManager.wifiInfo.hasPermission {
-                    CompactStatsCard(
+                    EnhancedCompactStatsCard(
                         title: "WiFi",
                         value: "Permission Required",
                         icon: "wifi.exclamationmark",
@@ -217,7 +221,7 @@ struct TabbedStatsView: View {
                         subtitle: "Limited Access"
                     )
                 } else {
-                    CompactStatsCard(
+                    EnhancedCompactStatsCard(
                         title: "WiFi",
                         value: "Disconnected",
                         icon: "wifi.slash",
@@ -226,7 +230,7 @@ struct TabbedStatsView: View {
                     )
                 }
                 
-                CompactStatsCard(
+                EnhancedCompactStatsCard(
                     title: "Upload",
                     value: "\(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).value) \(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).unit)",
                     icon: "arrow.up.circle",
@@ -234,7 +238,7 @@ struct TabbedStatsView: View {
                     subtitle: "Network"
                 )
                 
-                CompactStatsCard(
+                EnhancedCompactStatsCard(
                     title: "Download",
                     value: "\(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).value) \(NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: preferences.networkUnit == .bits ? .bits : .bytes, autoScale: preferences.autoScaleNetwork).unit)",
                     icon: "arrow.down.circle",
@@ -321,25 +325,25 @@ struct TabbedStatsView: View {
     }
     
     private var systemOverviewCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "System Overview", icon: "desktopcomputer", color: .blue)
-            
+                EnhancedCardHeaderView(title: "System Overview", icon: "desktopcomputer", color: .blue)
+			
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
-                    InfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
-                    InfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
-                    InfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
-                    InfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
+                    GlassInfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
+                    GlassInfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
+                    GlassInfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
+                    GlassInfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
                 }
             }
         }
     }
     
     private var quickBatteryCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 8) {
-                CardHeaderView(title: "Battery", icon: getBatteryIconName(), color: getBatteryIconColor())
-            
+                EnhancedCardHeaderView(title: "Battery", icon: getBatteryIconName(), color: getBatteryIconColor())
+			
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Charge Level")
@@ -350,9 +354,9 @@ struct TabbedStatsView: View {
                             .fontWeight(.bold)
                             .foregroundColor(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
                     }
-                    
+					
                     Spacer()
-                    
+					
                     VStack(alignment: .trailing, spacing: 4) {
                         Text(systemMonitor.batteryInfo.isCharging ? "Charging" : "Not Charging")
                             .font(.caption)
@@ -369,10 +373,10 @@ struct TabbedStatsView: View {
     }
     
     private var quickUPSCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 8) {
-                CardHeaderView(title: "UPS", icon: getUPSIconName(), color: getUPSIconColor())
-            
+                EnhancedCardHeaderView(title: "UPS", icon: getUPSIconName(), color: getUPSIconColor())
+			
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Power Source")
@@ -383,9 +387,9 @@ struct TabbedStatsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                     }
-                    
+					
                     Spacer()
-                    
+					
                     if systemMonitor.upsInfo.chargeLevel > 0 {
                         VStack(alignment: .trailing, spacing: 4) {
                             Text("Charge")
@@ -403,10 +407,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullCPUCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
-            
+                EnhancedCardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
+			
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -419,12 +423,12 @@ struct TabbedStatsView: View {
                                 .fontWeight(.semibold)
                                 .foregroundColor(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
                         }
-                        
+						
                         ProgressView(value: systemMonitor.cpuUsage, total: 100)
                             .tint(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
                             .scaleEffect(y: 1.5)
                     }
-                    
+					
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: "cpu.fill")
@@ -435,9 +439,9 @@ struct TabbedStatsView: View {
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
-                        
+						
                         Spacer()
-                        
+						
                         HStack(spacing: 4) {
                             Image(systemName: "clock")
                                 .foregroundColor(.blue)
@@ -447,10 +451,10 @@ struct TabbedStatsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+					
                     if !systemMonitor.cpuHistory.isEmpty {
                         Divider()
-                        
+						
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Image(systemName: "chart.line.uptrend.xyaxis")
@@ -460,10 +464,10 @@ struct TabbedStatsView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                                 Spacer()
-                                
+								
                                 let avgUsage = systemMonitor.cpuHistory.reduce(0, +) / Double(systemMonitor.cpuHistory.count)
                                 let maxUsage = systemMonitor.cpuHistory.max() ?? 0
-                                
+								
                                 VStack(alignment: .trailing, spacing: 1) {
                                     Text("Avg: \(String(format: "%.1f%%", avgUsage))")
                                         .font(.caption)
@@ -474,7 +478,7 @@ struct TabbedStatsView: View {
                                         .foregroundColor(usageColor(for: maxUsage, thresholds: (30, 70)))
                                 }
                             }
-                            
+							
                             SparklineView(
                                 data: systemMonitor.cpuHistory,
                                 lineColor: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
@@ -483,10 +487,10 @@ struct TabbedStatsView: View {
                             .frame(height: 35)
                         }
                     }
-                    
+					
                     if !systemMonitor.topProcesses.isEmpty {
                         Divider()
-                        
+						
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Image(systemName: "list.bullet")
@@ -497,7 +501,7 @@ struct TabbedStatsView: View {
                                     .foregroundColor(.secondary)
                                 Spacer()
                             }
-                            
+							
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(systemMonitor.topProcesses.prefix(5)) { process in
                                     enhancedProcessRowView(process: process, isCPUView: true)
@@ -511,10 +515,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullMemoryCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
-            
+                EnhancedCardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
+			
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -527,12 +531,12 @@ struct TabbedStatsView: View {
                                 .fontWeight(.semibold)
                                 .foregroundColor(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                         }
-                        
+						
                         ProgressView(value: systemMonitor.memoryUsage.used, total: systemMonitor.memoryUsage.total)
                             .tint(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                             .scaleEffect(y: 1.5)
                     }
-                    
+					
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             HStack(spacing: 4) {
@@ -543,7 +547,7 @@ struct TabbedStatsView: View {
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }
-                            
+							
                             Spacer()
                             
                             let freeMemory = systemMonitor.memoryUsage.total - systemMonitor.memoryUsage.used
@@ -605,10 +609,10 @@ struct TabbedStatsView: View {
                                 .foregroundColor(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                         }
                     }
-                    
+					
                     if !systemMonitor.topMemoryProcesses.isEmpty {
                         Divider()
-                        
+						
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Image(systemName: "list.bullet")
@@ -626,7 +630,7 @@ struct TabbedStatsView: View {
                                     .opacity(0.7)
                                     .monospacedDigit()
                             }
-                            
+							
                             VStack(alignment: .leading, spacing: 6) {
                                 ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
                                     enhancedProcessRowView(process: process, isCPUView: false)
@@ -640,10 +644,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullDiskCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
-            
+                EnhancedCardHeaderView(title: "Disk Usage", icon: "internaldrive", color: .purple)
+			
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -656,12 +660,12 @@ struct TabbedStatsView: View {
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
                         }
-                        
+						
                         ProgressView(value: systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, total: systemMonitor.diskUsage.total)
                             .tint(.purple)
                             .scaleEffect(y: 1.5)
                     }
-                    
+					
                     HStack {
                         HStack(spacing: 4) {
                             Circle()
@@ -677,7 +681,7 @@ struct TabbedStatsView: View {
                             .monospacedDigit()
                             .foregroundColor(.green)
                     }
-                    
+					
                     HStack {
                         HStack(spacing: 4) {
                             Circle()
@@ -701,10 +705,10 @@ struct TabbedStatsView: View {
     private var externalDrivesCard: some View {
         let drives = getExternalDrives()
         
-        return CardView {
+        return EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "External Drives", icon: "externaldrive.fill", color: .purple)
-            
+                EnhancedCardHeaderView(title: "External Drives", icon: "externaldrive.fill", color: .purple)
+			
                 if !drives.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         ForEach(drives, id: \.mountPoint) { drive in
@@ -733,10 +737,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullNetworkCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Network Activity", icon: "network", color: .green)
-            
+                EnhancedCardHeaderView(title: "Network Activity", icon: "network", color: .green)
+			
                 VStack(alignment: .leading, spacing: 8) {
                     let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
                     let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
@@ -752,14 +756,14 @@ struct TabbedStatsView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
+							
                             HStack {
                                 Text("\(uploadFormatted.value) \(uploadFormatted.unit)")
                                     .font(.title3)
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(.red)
-                                
+								
                                 Spacer()
                                 
                                 if !systemMonitor.uploadHistory.isEmpty {
@@ -785,14 +789,14 @@ struct TabbedStatsView: View {
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
+							
                             HStack {
                                 Text("\(downloadFormatted.value) \(downloadFormatted.unit)")
                                     .font(.title3)
                                     .fontWeight(.semibold)
                                     .monospacedDigit()
                                     .foregroundColor(.blue)
-                                
+								
                                 Spacer()
                                 
                                 if !systemMonitor.downloadHistory.isEmpty {
@@ -806,10 +810,10 @@ struct TabbedStatsView: View {
                             }
                         }
                     }
-                    
+					
                     if !systemMonitor.uploadHistory.isEmpty || !systemMonitor.downloadHistory.isEmpty {
                         Divider()
-                        
+						
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Peak Speeds")
@@ -870,10 +874,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullPowerConsumptionCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
-            
+                EnhancedCardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
+			
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "power")
@@ -889,19 +893,19 @@ struct TabbedStatsView: View {
                             .monospacedDigit()
                             .foregroundColor(.yellow)
                     }
-                    
+					
                     if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
-                        InfoRowView(label: "CPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
+                        GlassInfoRowView(label: "CPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
                     }
-                    
+					
                     if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
-                        InfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
+                        GlassInfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
                     }
-                    
+					
                     let adapterInfo = systemMonitor.powerConsumptionInfo.adapterInfo
                     if adapterInfo.isConnected && adapterInfo.wattage > 0 {
                         Divider()
-                        
+						
                         HStack {
                             Image(systemName: getPowerAdapterIcon(for: adapterInfo.type))
                                 .foregroundColor(.green)
@@ -924,7 +928,7 @@ struct TabbedStatsView: View {
                                 }
                             }
                         }
-                        
+						
                         if adapterInfo.inputPower > 0 {
                             let usagePercent = (adapterInfo.inputPower / Double(adapterInfo.wattage)) * 100
                             
@@ -957,7 +961,7 @@ struct TabbedStatsView: View {
                                     .scaleEffect(y: 0.8)
                             }
                         }
-                        
+						
                         if adapterInfo.efficiency > 0 {
                             HStack {
                                 HStack(spacing: 4) {
@@ -977,7 +981,7 @@ struct TabbedStatsView: View {
                             }
                         }
                     }
-                    
+					
                     if systemMonitor.powerConsumptionInfo.isEstimate {
                         HStack {
                             Image(systemName: "info.circle")
@@ -995,10 +999,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullBatteryCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Battery Status", icon: getBatteryIconName(), color: getBatteryIconColor())
-            
+                EnhancedCardHeaderView(title: "Battery Status", icon: getBatteryIconName(), color: getBatteryIconColor())
+			
                 VStack(alignment: .leading, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -1011,32 +1015,32 @@ struct TabbedStatsView: View {
                                 .fontWeight(.semibold)
                                 .foregroundColor(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
                         }
-                        
+						
                         ProgressView(value: systemMonitor.batteryInfo.chargeLevel, total: 100)
                             .tint(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
                             .scaleEffect(y: 1.5)
                     }
-                    
-                    InfoRowView(label: "Cycle Count", value: "\(systemMonitor.batteryInfo.cycleCount)")
-                    InfoRowView(label: "Time Remaining", value: formatTime(systemMonitor.batteryInfo.timeRemaining))
-                    InfoRowView(label: "Max Capacity", value: "\(systemMonitor.batteryInfo.maxCapacity)%")
-                    
+					
+                    GlassInfoRowView(label: "Cycle Count", value: "\(systemMonitor.batteryInfo.cycleCount)")
+                    GlassInfoRowView(label: "Time Remaining", value: formatTime(systemMonitor.batteryInfo.timeRemaining))
+                    GlassInfoRowView(label: "Max Capacity", value: "\(systemMonitor.batteryInfo.maxCapacity)%")
+					
                     if systemMonitor.batteryInfo.health != "Unknown" {
-                        InfoRowView(label: "Health", value: systemMonitor.batteryInfo.health)
+                        GlassInfoRowView(label: "Health", value: systemMonitor.batteryInfo.health)
                     }
-                    
+					
                     if systemMonitor.batteryInfo.temperature > 0 {
-                        InfoRowView(label: "Temperature", value: String(format: "%.1f°C", systemMonitor.batteryInfo.temperature))
+                        GlassInfoRowView(label: "Temperature", value: String(format: "%.1f°C", systemMonitor.batteryInfo.temperature))
                     }
-                    
+					
                     if systemMonitor.batteryInfo.voltage > 0 {
-                        InfoRowView(label: "Voltage", value: String(format: "%.0f mV", systemMonitor.batteryInfo.voltage))
+                        GlassInfoRowView(label: "Voltage", value: String(format: "%.0f mV", systemMonitor.batteryInfo.voltage))
                     }
-                    
+					
                     if systemMonitor.batteryInfo.amperage != 0 {
-                        InfoRowView(label: "Current", value: String(format: "%.0f mA", systemMonitor.batteryInfo.amperage))
+                        GlassInfoRowView(label: "Current", value: String(format: "%.0f mA", systemMonitor.batteryInfo.amperage))
                     }
-                    
+					
                     HStack {
                         Text("Charging")
                             .font(.subheadline)
@@ -1053,10 +1057,10 @@ struct TabbedStatsView: View {
     }
     
     private var fullUPSCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "UPS Status", icon: getUPSIconName(), color: getUPSIconColor())
-            
+                EnhancedCardHeaderView(title: "UPS Status", icon: getUPSIconName(), color: getUPSIconColor())
+			
                 VStack(alignment: .leading, spacing: 12) {
                     if systemMonitor.upsInfo.present && systemMonitor.upsInfo.chargeLevel > 0 {
                         VStack(alignment: .leading, spacing: 4) {
@@ -1070,27 +1074,27 @@ struct TabbedStatsView: View {
                                     .fontWeight(.semibold)
                                     .foregroundColor(upsChargeColor(for: systemMonitor.upsInfo.chargeLevel))
                             }
-                            
+							
                             ProgressView(value: systemMonitor.upsInfo.chargeLevel, total: 100)
                                 .tint(upsChargeColor(for: systemMonitor.upsInfo.chargeLevel))
                                 .scaleEffect(y: 1.5)
                         }
                         
-                        InfoRowView(label: "Name", value: systemMonitor.upsInfo.name)
+                        GlassInfoRowView(label: "Name", value: systemMonitor.upsInfo.name)
                         
                         if systemMonitor.upsInfo.timeRemaining > 0 {
-                            InfoRowView(label: "Time Remaining", value: formatTime(systemMonitor.upsInfo.timeRemaining))
+                            GlassInfoRowView(label: "Time Remaining", value: formatTime(systemMonitor.upsInfo.timeRemaining))
                         }
                         
-                        InfoRowView(label: "Power Source", value: systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource, 
-                                   valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
+                        GlassInfoRowView(label: "Power Source", value: systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource, 
+                                       valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                         
                         if systemMonitor.upsInfo.voltage > 0 {
-                            InfoRowView(label: "Voltage", value: String(format: "%.1f V", systemMonitor.upsInfo.voltage / 1000.0))
+                            GlassInfoRowView(label: "Voltage", value: String(format: "%.1f V", systemMonitor.upsInfo.voltage / 1000.0))
                         }
                         
                         if systemMonitor.upsInfo.loadPercentage > 0 {
-                            InfoRowView(label: "Load", value: String(format: "%.1f%%", systemMonitor.upsInfo.loadPercentage))
+                            GlassInfoRowView(label: "Load", value: String(format: "%.1f%%", systemMonitor.upsInfo.loadPercentage))
                         }
                         
                         HStack {
@@ -1104,11 +1108,11 @@ struct TabbedStatsView: View {
                                 .foregroundColor(systemMonitor.upsInfo.isCharging ? .red : .green)
                         }
                     } else {
-                        InfoRowView(label: "Power Source", value: systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource, 
-                                   valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
+                        GlassInfoRowView(label: "Power Source", value: systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource, 
+                                       valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                         
                         if !systemMonitor.upsInfo.name.isEmpty && systemMonitor.upsInfo.name != "Unknown" {
-                            InfoRowView(label: "Device", value: systemMonitor.upsInfo.name)
+                            GlassInfoRowView(label: "Device", value: systemMonitor.upsInfo.name)
                         }
                         
                         HStack {
@@ -1127,30 +1131,30 @@ struct TabbedStatsView: View {
     }
     
     private var fullSystemInfoCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "System Information", icon: "info.circle", color: .blue)
-            
+                EnhancedCardHeaderView(title: "System Information", icon: "info.circle", color: .blue)
+			
                 VStack(alignment: .leading, spacing: 8) {
-                    InfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
-                    InfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
-                    InfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
-                    InfoRowView(label: "Kernel", value: systemMonitor.systemInfo.kernelVersion)
-                    InfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
-                    InfoRowView(label: "Boot Time", value: formatBootTime(systemMonitor.systemInfo.bootTime))
-                    
+                    GlassInfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
+                    GlassInfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
+                    GlassInfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
+                    GlassInfoRowView(label: "Kernel", value: systemMonitor.systemInfo.kernelVersion)
+                    GlassInfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
+                    GlassInfoRowView(label: "Boot Time", value: formatBootTime(systemMonitor.systemInfo.bootTime))
+					
                     let totalPhysicalMemory = Double(ProcessInfo.processInfo.physicalMemory) / (1000 * 1000 * 1000)
-                    InfoRowView(label: "Physical Memory", value: String(format: "%.0f GB", totalPhysicalMemory))
+                    GlassInfoRowView(label: "Physical Memory", value: String(format: "%.0f GB", totalPhysicalMemory))
                 }
             }
         }
     }
     
     private var temperatureCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "CPU Temperature & Cooling", icon: "thermometer", color: .red)
-            
+                EnhancedCardHeaderView(title: "CPU Temperature & Cooling", icon: "thermometer", color: .red)
+			
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Current Temperature")
@@ -1165,9 +1169,9 @@ struct TabbedStatsView: View {
                             .monospacedDigit()
                             .foregroundColor(temperatureColor(for: systemMonitor.cpuTemperature))
                     }
-                    
+					
                     Divider()
-                    
+					
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: "fan")
@@ -1178,6 +1182,7 @@ struct TabbedStatsView: View {
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
+
                         
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
@@ -1193,7 +1198,7 @@ struct TabbedStatsView: View {
                             }
                         }
                     }
-                    
+					
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: getThermalPressureIcon(for: systemMonitor.fanInfo.thermalState))
@@ -1211,7 +1216,7 @@ struct TabbedStatsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(getThermalPressureColor(for: systemMonitor.fanInfo.thermalState))
                     }
-                    
+					
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Fan Activity")
@@ -1228,10 +1233,10 @@ struct TabbedStatsView: View {
                             .tint(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
                             .scaleEffect(y: 1.2)
                     }
-                    
+					
                     if !systemMonitor.cpuTemperatureHistory.isEmpty {
                         Divider()
-                        
+						
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Image(systemName: "chart.line.uptrend.xyaxis")
@@ -1265,7 +1270,7 @@ struct TabbedStatsView: View {
                             .frame(height: 35)
                         }
                     }
-                    
+					
                     HStack {
                         if TemperatureMonitor.hasTemperatureSensors() {
                             Image(systemName: "checkmark.circle.fill")
@@ -1299,23 +1304,23 @@ struct TabbedStatsView: View {
     }
     
     private var systemResourcesCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "System Resources", icon: "gear", color: .gray)
-            
+                EnhancedCardHeaderView(title: "System Resources", icon: "gear", color: .gray)
+			
                 VStack(alignment: .leading, spacing: 8) {
-                    InfoRowView(label: "CPU Cores", value: "\(ProcessInfo.processInfo.processorCount)")
+                    GlassInfoRowView(label: "CPU Cores", value: "\(ProcessInfo.processInfo.processorCount)")
                     
-                    InfoRowView(label: "Active Cores", value: "\(ProcessInfo.processInfo.activeProcessorCount)")
+                    GlassInfoRowView(label: "Active Cores", value: "\(ProcessInfo.processInfo.activeProcessorCount)")
                     
                     let processCount = systemMonitor.topProcesses.count + systemMonitor.topMemoryProcesses.count
-                    InfoRowView(label: "Running Processes", value: "\(processCount)")
+                    GlassInfoRowView(label: "Running Processes", value: "\(processCount)")
                     
                     var loadAvg = [Double](repeating: 0, count: 3)
                     let result = getloadavg(&loadAvg, 3)
                     if result != -1 {
                         Divider()
-                        
+						
                         HStack {
                             Text("Load Average")
                                 .font(.subheadline)
@@ -1334,10 +1339,10 @@ struct TabbedStatsView: View {
                             }
                         }
                     }
-                    
+					
                     if ProcessInfo.processInfo.thermalState != .nominal {
                         Divider()
-                        
+						
                         HStack {
                             Image(systemName: "thermometer")
                                 .foregroundColor(getThermalStateColor())
@@ -1358,10 +1363,10 @@ struct TabbedStatsView: View {
     }
     
     private var networkInterfacesCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "Network Interface", icon: "network.badge.shield.half.filled", color: .green)
-            
+                EnhancedCardHeaderView(title: "Network Interface", icon: "network.badge.shield.half.filled", color: .green)
+			
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Active Interface")
@@ -1378,7 +1383,7 @@ struct TabbedStatsView: View {
                                 .foregroundColor(.green)
                         }
                     }
-                    
+					
                     HStack {
                         Text("Type")
                             .font(.subheadline)
@@ -1389,7 +1394,7 @@ struct TabbedStatsView: View {
                             .fontWeight(.medium)
                             .foregroundColor(.blue)
                     }
-                    
+					
                     HStack {
                         Text("Display Units")
                             .font(.subheadline)
@@ -1400,7 +1405,7 @@ struct TabbedStatsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(.blue)
                     }
-                    
+					
                     HStack {
                         Text("Auto Scale")
                             .font(.subheadline)
@@ -1411,10 +1416,10 @@ struct TabbedStatsView: View {
                             .fontWeight(.semibold)
                             .foregroundColor(preferences.autoScaleNetwork ? .green : .secondary)
                     }
-                    
+					
                     if !systemMonitor.networkInterfaces.isEmpty {
                         Divider()
-                        
+						
                         HStack {
                             Image(systemName: "info.circle")
                                 .foregroundColor(.secondary)
@@ -1435,10 +1440,10 @@ struct TabbedStatsView: View {
     }
     
     private var externalIPCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(title: "External IP", icon: "globe", color: .green)
-            
+                EnhancedCardHeaderView(title: "External IP", icon: "globe", color: .green)
+			
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("IP Address")
@@ -1451,7 +1456,7 @@ struct TabbedStatsView: View {
                             .monospacedDigit()
                             .foregroundColor(.green)
                     }
-                    
+					
                     if !externalIPManager.countryName.isEmpty {
                         HStack {
                             Text("Location")
@@ -1468,14 +1473,14 @@ struct TabbedStatsView: View {
                             }
                         }
                     }
-                    
+					
                     if !externalIPManager.countryCode.isEmpty {
-                        InfoRowView(label: "Country Code", value: externalIPManager.countryCode.uppercased())
+                        GlassInfoRowView(label: "Country Code", value: externalIPManager.countryCode.uppercased())
                     }
-                    
+					
                     if let lastUpdated = externalIPManager.lastUpdated {
                         Divider()
-                        
+						
                         HStack {
                             Image(systemName: "clock")
                                 .foregroundColor(.secondary)
@@ -1489,7 +1494,7 @@ struct TabbedStatsView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    
+					
                     if externalIPManager.isLoading {
                         HStack {
                             ProgressView()
@@ -1505,14 +1510,14 @@ struct TabbedStatsView: View {
     }
     
     private var wifiCard: some View {
-        CardView {
+        EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                CardHeaderView(
+                EnhancedCardHeaderView(
                     title: "WiFi Status", 
                     icon: wifiManager.getWiFiIconName(), 
                     color: getWiFiCardColor()
                 )
-                
+				
                 VStack(alignment: .leading, spacing: 8) {
                     if wifiManager.wifiInfo.isConnected {
                         HStack {
@@ -1527,7 +1532,7 @@ struct TabbedStatsView: View {
                         }
                         
                         Divider()
-                        
+						
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Text("Signal Strength")
@@ -1572,9 +1577,9 @@ struct TabbedStatsView: View {
                         }
                         
                         Divider()
-                        
-                        InfoRowView(label: "Security", value: wifiManager.wifiInfo.securityType, 
-                                   valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType))
+						
+                        GlassInfoRowView(label: "Security", value: wifiManager.wifiInfo.securityType, 
+                                       valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType))
                         
                     } else if !wifiManager.wifiInfo.hasPermission {
                         VStack(alignment: .leading, spacing: 12) {
@@ -1631,9 +1636,9 @@ struct TabbedStatsView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
-                    
+					
                     Divider()
-                    
+					
                     HStack {
                         Button(action: {
                             wifiManager.refreshWiFiInfo()
@@ -2369,68 +2374,3 @@ struct TabbedStatsView: View {
     }
 }
 
-struct CardView<Content: View>: View {
-    let content: Content
-    
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-    
-    var body: some View {
-        content
-            .padding(12)
-            .background {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(NSColor.controlBackgroundColor))
-                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 0.5)
-            }
-    }
-}
-
-struct CardHeaderView: View {
-    let title: String
-    let icon: String
-    let color: Color
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundColor(color)
-                .font(.title3)
-            .frame(width: 20, height: 20)
-            
-            Text(title)
-                .font(.headline)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
-            
-            Spacer()
-        }
-        .padding(.bottom, 8)
-    }
-}
-
-struct InfoRowView: View {
-    let label: String
-    let value: String
-    var valueColor: Color = .primary
-    
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .monospacedDigit()
-                .foregroundColor(valueColor)
-                .multilineTextAlignment(.trailing)
-        }
-    }
-}
