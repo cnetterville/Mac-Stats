@@ -146,7 +146,7 @@ struct MenuBarIconView: View {
         VStack(alignment: .center, spacing: compactSpacing) {
             Text("DSK")
                 .font(compactFont)
-            Text(String(format: "%.0fG", systemMonitor.diskUsage.free))
+            Text(String(format: "%.0fG", systemMonitor.diskUsage.free - systemMonitor.diskUsage.purgeable))
                 .font(dataFont)
         }
         .frame(width: 35) // Reduced from 40

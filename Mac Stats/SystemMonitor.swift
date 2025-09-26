@@ -251,7 +251,7 @@ class SystemMonitor: ObservableObject {
     @Published var cpuTemperature: Double = 0.0
     @Published var fanInfo: FanInfo = FanInfo() // Add fan information
     @Published var memoryUsage: (used: Double, total: Double) = (0.0, 0.0)
-    @Published var diskUsage: (free: Double, total: Double) = (0.0, 0.0)
+    @Published var diskUsage: (free: Double, total: Double, purgeable: Double) = (0.0, 0.0, 0.0)
     @Published var networkUsage: (upload: Double, download: Double) = (0.0, 0.0)
     @Published var networkInterfaces: [String] = []
     @Published var topProcesses: [SystemProcessInfo] = []
@@ -372,7 +372,7 @@ class SystemMonitor: ObservableObject {
         var cpuTemp: Double = 0.0
         var fan: FanInfo = FanInfo()
         var memory: (used: Double, total: Double) = (0.0, 0.0)
-        var disk: (free: Double, total: Double) = (0.0, 0.0)
+        var disk: (free: Double, total: Double, purgeable: Double) = (0.0, 0.0, 0.0)
         var network: (upload: Double, download: Double) = (0.0, 0.0)
         var ups: UPSInfo = UPSInfo()
         var battery: BatteryInfo = BatteryInfo()
@@ -822,22 +822,26 @@ class SystemMonitor: ObservableObject {
         return (used: 0.0, total: 0.0)
     }
     
-    private func getCurrentDisk() -> (free: Double, total: Double) {
+    private func getCurrentDisk() -> (free: Double, total: Double, purgeable: Double) {
         let fileURL = URL(fileURLWithPath: "/")
         do {
-            let values = try fileURL.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityKey])
-            if let total = values.volumeTotalCapacity, let available = values.volumeAvailableCapacity {
+            let values = try fileURL.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityKey, .volumeAvailableCapacityForImportantUsageKey])
+            if let total = values.volumeTotalCapacity,
+               let available = values.volumeAvailableCapacity,
+               let availableForImportant = values.volumeAvailableCapacityForImportantUsage {
+                
                 // Convert to GB using constant
                 let freeGB = Double(available) / Constants.gbDivisor
                 let totalGB = Double(total) / Constants.gbDivisor
+                let purgeableGB = Double(Int64(available) - Int64(availableForImportant)) / Constants.gbDivisor
                 
-                return (free: freeGB, total: totalGB)
+                return (free: freeGB, total: totalGB, purgeable: purgeableGB)
             }
         } catch {
             print(" Disk monitoring failed: \(error)")
         }
         
-        return (free: 0.0, total: 0.0)
+        return (free: 0.0, total: 0.0, purgeable: 0.0)
     }
     
     private func getCurrentNetwork() -> (upload: Double, download: Double) {

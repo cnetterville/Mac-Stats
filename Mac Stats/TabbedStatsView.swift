@@ -280,369 +280,6 @@ struct TabbedStatsView: View {
         }
     }
     
-    private var networkContent: some View {
-        VStack(spacing: 12) {
-            if preferences.showNetwork {
-                fullNetworkCard
-            }
-            
-            wifiCard
-            
-            networkInterfacesCard
-            
-            if !externalIPManager.externalIP.isEmpty {
-                externalIPCard
-            }
-        }
-    }
-    
-    private var powerContent: some View {
-        VStack(spacing: 12) {
-            if preferences.showPowerConsumption && systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
-                fullPowerConsumptionCard
-            }
-            
-            if systemMonitor.batteryInfo.present {
-                fullBatteryCard
-            }
-            
-            if systemMonitor.upsInfo.present {
-                fullUPSCard
-            }
-        }
-    }
-    
-    private var systemContent: some View {
-        VStack(spacing: 12) {
-            fullSystemInfoCard
-			
-            if preferences.showCPUTemperature {
-                temperatureCard
-            }
-            
-            systemResourcesCard
-        }
-    }
-    
-    private var systemOverviewCard: some View {
-        EnhancedCardView {
-            VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(title: "System Overview", icon: "desktopcomputer", color: .blue)
-			
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
-                    GlassInfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
-                    GlassInfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
-                    GlassInfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
-                    GlassInfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
-                }
-            }
-        }
-    }
-    
-    private var quickBatteryCard: some View {
-        EnhancedCardView {
-            VStack(alignment: .leading, spacing: 8) {
-                EnhancedCardHeaderView(title: "Battery", icon: getBatteryIconName(), color: getBatteryIconColor())
-			
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Charge Level")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text(String(format: "%.0f%%", systemMonitor.batteryInfo.chargeLevel))
-                            .font(.title2)
-                            .fontWeight(.bold)
-                            .foregroundColor(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
-                    }
-					
-                    Spacer()
-					
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(systemMonitor.batteryInfo.isCharging ? "Charging" : "Not Charging")
-                            .font(.caption)
-                            .foregroundColor(systemMonitor.batteryInfo.isCharging ? .green : .secondary)
-                        if systemMonitor.batteryInfo.timeRemaining > 0 {
-                            Text(formatTime(systemMonitor.batteryInfo.timeRemaining))
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var quickUPSCard: some View {
-        EnhancedCardView {
-            VStack(alignment: .leading, spacing: 8) {
-                EnhancedCardHeaderView(title: "UPS", icon: getUPSIconName(), color: getUPSIconColor())
-			
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Power Source")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Text(systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
-                    }
-					
-                    Spacer()
-					
-                    if systemMonitor.upsInfo.chargeLevel > 0 {
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("Charge")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text(String(format: "%.0f%%", systemMonitor.upsInfo.chargeLevel))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(upsChargeColor(for: systemMonitor.upsInfo.chargeLevel))
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var fullCPUCard: some View {
-        EnhancedCardView {
-            VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
-			
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Current Usage")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(String(format: "%.1f%%", systemMonitor.cpuUsage))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
-                        }
-						
-                        ProgressView(value: systemMonitor.cpuUsage, total: 100)
-                            .tint(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
-                            .scaleEffect(y: 1.5)
-                    }
-					
-                    HStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: "cpu.fill")
-                                .foregroundColor(.orange)
-                                .font(.caption)
-                            Text(systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                                .lineLimit(1)
-                        }
-						
-                        Spacer()
-						
-                        HStack(spacing: 4) {
-                            Image(systemName: "clock")
-                                .foregroundColor(.blue)
-                                .font(.caption)
-                            Text("Multi-core")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-					
-                    if !systemMonitor.cpuHistory.isEmpty {
-                        Divider()
-						
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Image(systemName: "chart.line.uptrend.xyaxis")
-                                    .foregroundColor(.orange)
-                                    .font(.caption)
-                                Text("Usage Trend")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-								
-                                let avgUsage = systemMonitor.cpuHistory.reduce(0, +) / Double(systemMonitor.cpuHistory.count)
-                                let maxUsage = systemMonitor.cpuHistory.max() ?? 0
-								
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text("Avg: \(String(format: "%.1f%%", avgUsage))")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Text("Peak: \(String(format: "%.1f%%", maxUsage))")
-                                        .font(.caption)
-                                        .monospacedDigit()
-                                        .foregroundColor(usageColor(for: maxUsage, thresholds: (30, 70)))
-                                }
-                            }
-							
-                            SparklineView(
-                                data: systemMonitor.cpuHistory,
-                                lineColor: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
-                                lineWidth: 2
-                            )
-                            .frame(height: 35)
-                        }
-                    }
-					
-                    if !systemMonitor.topProcesses.isEmpty {
-                        Divider()
-						
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "list.bullet")
-                                    .foregroundColor(.orange)
-                                    .font(.caption)
-                                Text("Top CPU Processes")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                            }
-							
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(systemMonitor.topProcesses.prefix(5)) { process in
-                                    enhancedProcessRowView(process: process, isCPUView: true)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private var fullMemoryCard: some View {
-        EnhancedCardView {
-            VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
-			
-                VStack(alignment: .leading, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Used Memory")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(String(format: "%.1f GB / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
-                        }
-						
-                        ProgressView(value: systemMonitor.memoryUsage.used, total: systemMonitor.memoryUsage.total)
-                            .tint(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
-                            .scaleEffect(y: 1.5)
-                    }
-					
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 8, height: 8)
-                                Text("Free")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-							
-                            Spacer()
-                            
-                            let freeMemory = systemMonitor.memoryUsage.total - systemMonitor.memoryUsage.used
-                            let freePercent = (freeMemory / systemMonitor.memoryUsage.total) * 100
-                            
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(String(format: "%.1f GB", freeMemory))
-                                    .font(.caption)
-                                    .monospacedDigit()
-                                    .foregroundColor(.green)
-                                Text(String(format: "%.1f%%", freePercent))
-                                    .font(.caption2)
-                                    .monospacedDigit()
-                                    .foregroundColor(.green)
-                            }
-                        }
-                        
-                        HStack {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color.blue)
-                                    .frame(width: 8, height: 8)
-                                Text("Used")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            let usedPercent = (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100
-                            
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(String(format: "%.1f GB", systemMonitor.memoryUsage.used))
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.blue)
-                                Text(String(format: "%.1f%%", usedPercent))
-                                    .font(.caption2)
-                                    .monospacedDigit()
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        
-                        HStack {
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
-                                    .frame(width: 8, height: 8)
-                                Text("Pressure")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            Spacer()
-                            
-                            Text(memoryPressureText(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
-                                .font(.caption)
-                                .fontWeight(.medium)
-                                .foregroundColor(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
-                        }
-                    }
-					
-                    if !systemMonitor.topMemoryProcesses.isEmpty {
-                        Divider()
-						
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "list.bullet")
-                                    .foregroundColor(.blue)
-                                    .font(.caption)
-                                Text("Top Memory Processes")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                
-                                let totalMemUsage = systemMonitor.topMemoryProcesses.prefix(5).reduce(0) { $0 + $1.memoryUsage }
-                                Text("Total: \(String(format: "%.1f%%", totalMemUsage))")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .opacity(0.7)
-                                    .monospacedDigit()
-                            }
-							
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
-                                    enhancedProcessRowView(process: process, isCPUView: false)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
     private var fullDiskCard: some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
@@ -655,47 +292,72 @@ struct TabbedStatsView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             Spacer()
-                            Text(String(format: "%.0f GB / %.0f GB", systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, systemMonitor.diskUsage.total))
+                            Text(String(format: "%.0f GB / %.0f GB", systemMonitor.diskUsage.total - (systemMonitor.diskUsage.free - systemMonitor.diskUsage.purgeable), systemMonitor.diskUsage.total))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
-                                .monospacedDigit()
+                                .foregroundColor(.purple)
                         }
 						
-                        ProgressView(value: systemMonitor.diskUsage.total - systemMonitor.diskUsage.free, total: systemMonitor.diskUsage.total)
+                        ProgressView(value: systemMonitor.diskUsage.total - (systemMonitor.diskUsage.free - systemMonitor.diskUsage.purgeable), total: systemMonitor.diskUsage.total)
                             .tint(.purple)
                             .scaleEffect(y: 1.5)
                     }
 					
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                            Text("Free")
+                    VStack(alignment: .leading, spacing: 6) {
+                        let totalSpace = systemMonitor.diskUsage.total
+                        let usedSpace = totalSpace - systemMonitor.diskUsage.free
+                        let purgeableSpace = systemMonitor.diskUsage.purgeable
+                        let freeSpace = systemMonitor.diskUsage.free - purgeableSpace
+
+                        HStack {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 8, height: 8)
+                                Text("Free")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text(String(format: "%.0f GB", freeSpace))
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                                .foregroundColor(.green)
                         }
-                        Spacer()
-                        Text(String(format: "%.0f GB", systemMonitor.diskUsage.free))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.green)
-                    }
+
+                        if purgeableSpace > 0.1 {
+                            HStack {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(Color.gray.opacity(0.7))
+                                        .frame(width: 8, height: 8)
+                                    Text("Purgeable")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.0f GB", purgeableSpace))
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                            }
+                        }
 					
-                    HStack {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color.purple)
-                                .frame(width: 8, height: 8)
-                            Text("Used")
+                        HStack {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.purple)
+                                    .frame(width: 8, height: 8)
+                                Text("Used")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            Text(String(format: "%.1f%% (%.0f GB)", (usedSpace / totalSpace) * 100, usedSpace))
                                 .font(.caption)
-                                .foregroundColor(.secondary)
+                                .monospacedDigit()
+                                .foregroundColor(.purple)
                         }
-                        Spacer()
-                        Text(String(format: "%.1f%% (%.0f GB)", ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100, systemMonitor.diskUsage.total - systemMonitor.diskUsage.free))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundColor(.purple)
                     }
                 }
             }
@@ -736,6 +398,22 @@ struct TabbedStatsView: View {
         }
     }
     
+    private var networkContent: some View {
+        VStack(spacing: 12) {
+            if preferences.showNetwork {
+                fullNetworkCard
+            }
+            
+            wifiCard
+            
+            networkInterfacesCard
+            
+            if !externalIPManager.externalIP.isEmpty {
+                externalIPCard
+            }
+        }
+    }
+    
     private var fullNetworkCard: some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
@@ -761,7 +439,6 @@ struct TabbedStatsView: View {
                                 Text("\(uploadFormatted.value) \(uploadFormatted.unit)")
                                     .font(.title3)
                                     .fontWeight(.semibold)
-                                    .monospacedDigit()
                                     .foregroundColor(.red)
 								
                                 Spacer()
@@ -794,7 +471,6 @@ struct TabbedStatsView: View {
                                 Text("\(downloadFormatted.value) \(downloadFormatted.unit)")
                                     .font(.title3)
                                     .fontWeight(.semibold)
-                                    .monospacedDigit()
                                     .foregroundColor(.blue)
 								
                                 Spacer()
@@ -819,53 +495,365 @@ struct TabbedStatsView: View {
                                 Text("Peak Speeds")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                            
-                                HStack {
-                                    if let maxUpload = systemMonitor.uploadHistory.max() {
-                                        let maxUploadFormatted = NetworkFormatter.formatNetworkValue(maxUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↑ \(maxUploadFormatted.value) \(maxUploadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.red)
-                                    }
-                            
-                                    if let maxDownload = systemMonitor.downloadHistory.max() {
-                                        let maxDownloadFormatted = NetworkFormatter.formatNetworkValue(maxDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↓ \(maxDownloadFormatted.value) \(maxDownloadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.blue)
-                                    }
-                                }
+                            // Removed the second part of this code, leaving only the variable declaration in this context.
                             }
                             
                             Spacer()
                             
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("Average")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                            VStack(alignment: .trailing, spacing: 1) {
+                                if let maxUpload = systemMonitor.uploadHistory.max() {
+                                    let maxUploadFormatted = NetworkFormatter.formatNetworkValue(maxUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                                    Text("↑ \(maxUploadFormatted.value) \(maxUploadFormatted.unit)")
+                                        .font(.caption)
+                                        .monospacedDigit()
+                                        .foregroundColor(.red)
+                                }
                             
-                                HStack {
-                                    if !systemMonitor.uploadHistory.isEmpty {
-                                        let avgUpload = systemMonitor.uploadHistory.reduce(0, +) / Double(systemMonitor.uploadHistory.count)
-                                        let avgUploadFormatted = NetworkFormatter.formatNetworkValue(avgUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↑ \(avgUploadFormatted.value) \(avgUploadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.red)
-                                    }
-                            
-                                    if !systemMonitor.downloadHistory.isEmpty {
-                                        let avgDownload = systemMonitor.downloadHistory.reduce(0, +) / Double(systemMonitor.downloadHistory.count)
-                                        let avgDownloadFormatted = NetworkFormatter.formatNetworkValue(avgDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↓ \(avgDownloadFormatted.value) \(avgDownloadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.blue)
-                                    }
+                                if let maxDownload = systemMonitor.downloadHistory.max() {
+                                    let maxDownloadFormatted = NetworkFormatter.formatNetworkValue(maxDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                                    Text("↓ \(maxDownloadFormatted.value) \(maxDownloadFormatted.unit)")
+                                        .font(.caption)
+                                        .monospacedDigit()
+                                        .foregroundColor(.blue)
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var powerContent: some View {
+        VStack(spacing: 12) {
+            if preferences.showPowerConsumption && systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
+                fullPowerConsumptionCard
+            }
+            
+            if systemMonitor.batteryInfo.present {
+                fullBatteryCard
+            }
+            
+            if systemMonitor.upsInfo.present {
+                fullUPSCard
+            }
+        }
+    }
+    
+    private var systemContent: some View {
+        VStack(spacing: 12) {
+            fullSystemInfoCard
+			
+            if preferences.showCPUTemperature {
+                temperatureCard
+            }
+            
+            systemResourcesCard
+        }
+    }
+    
+    private var wifiCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 12) {
+                EnhancedCardHeaderView(
+                    title: "WiFi Status", 
+                    icon: wifiManager.getWiFiIconName(), 
+                    color: getWiFiCardColor()
+                )
+				
+                VStack(alignment: .leading, spacing: 8) {
+                    if wifiManager.wifiInfo.isConnected {
+                        HStack {
+                            Text("Network Name")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(wifiManager.wifiInfo.networkName)
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.primary)
+                        }
+                        
+                        Divider()
+						
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Signal Strength")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Text("\(wifiManager.wifiInfo.signalStrength) dBm")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .monospacedDigit()
+                                        .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                    
+                                    Text("(\(wifiManager.getSignalStrengthPercentage())%)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Quality: \(wifiManager.getSignalStrengthDescription())")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    
+                                    HStack(spacing: 2) {
+                                        ForEach(0..<4) { index in
+                                            Rectangle()
+                                                .fill(index < getSignalBars(for: wifiManager.getSignalStrengthPercentage()) ? 
+                                                     getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength) : 
+                                                     Color.secondary.opacity(0.3))
+                                                .frame(width: 4, height: CGFloat(6 + index * 2))
+                                        }
+                                    }
+                                }
+                                
+                                ProgressView(value: Double(wifiManager.getSignalStrengthPercentage()), total: 100)
+                                    .tint(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
+                                    .scaleEffect(y: 1.2)
+                            }
+                        }
+                        
+                        Divider()
+						
+                        GlassInfoRowView(label: "Security", value: wifiManager.wifiInfo.securityType, 
+                                       valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType))
+                        
+                    } else if !wifiManager.wifiInfo.hasPermission {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                    .font(.title2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Permission Required")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.orange)
+                                    Text("Additional Access Needed")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            
+                            Text("WiFi information requires additional system permissions to access detailed network information. This is normal behavior on macOS for privacy protection.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            
+                            if let errorMessage = wifiManager.wifiInfo.errorMessage {
+                                Text("Technical details: \(errorMessage)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .italic()
+                            }
+                        }
+                        
+                    } else {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "wifi.slash")
+                                    .foregroundColor(.secondary)
+                                    .font(.title2)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("WiFi Disconnected")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.secondary)
+                                    Text("No Active Connection")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                            
+                            Text("Connect to a WiFi network to see detailed connection information, signal strength, and security details.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+					
+                    Divider()
+					
+                    HStack {
+                        Button(action: {
+                            wifiManager.refreshWiFiInfo()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                                Text("Refresh WiFi Info")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.blue)
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("Access: \(wifiManager.wifiInfo.hasPermission ? "Full" : "Limited")")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            if wifiManager.wifiInfo.isConnected {
+                                Text("Connected")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var networkInterfacesCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 12) {
+                EnhancedCardHeaderView(title: "Network Interface", icon: "network.badge.shield.half.filled", color: .green)
+			
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Active Interface")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Image(systemName: getNetworkInterfaceIcon(for: preferences.selectedNetworkInterface))
+                                .foregroundColor(.green)
+                                .font(.subheadline)
+                            Text(preferences.selectedNetworkInterface)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.green)
+                        }
+                    }
+					
+                    HStack {
+                        Text("Type")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(getNetworkInterfaceType(for: preferences.selectedNetworkInterface))
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .foregroundColor(.blue)
+                    }
+					
+                    HStack {
+                        Text("Display Units")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(preferences.networkUnit == .bits ? "Bits/s" : "Bytes/s")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.blue)
+                    }
+					
+                    HStack {
+                        Text("Auto Scale")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(preferences.autoScaleNetwork ? "Enabled" : "Disabled")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(preferences.autoScaleNetwork ? .green : .secondary)
+                    }
+					
+                    if !systemMonitor.networkInterfaces.isEmpty {
+                        Divider()
+						
+                        HStack {
+                            Image(systemName: "info.circle")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                            Text("Total Interfaces Available")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(systemMonitor.networkInterfaces.count)")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var externalIPCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 12) {
+                EnhancedCardHeaderView(title: "External IP", icon: "globe", color: .green)
+			
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("IP Address")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(externalIPManager.externalIP)
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                            .foregroundColor(.green)
+                    }
+					
+                    if !externalIPManager.countryName.isEmpty {
+                        HStack {
+                            Text("Location")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            HStack(spacing: 6) {
+                                Text(externalIPManager.flagEmoji)
+                                    .font(.title2)
+                                Text(externalIPManager.countryName)
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                    }
+					
+                    if !externalIPManager.countryCode.isEmpty {
+                        GlassInfoRowView(label: "Country Code", value: externalIPManager.countryCode.uppercased())
+                    }
+					
+                    if let lastUpdated = externalIPManager.lastUpdated {
+                        Divider()
+						
+                        HStack {
+                            Image(systemName: "clock")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
+                            Text("Last Updated")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(formatLastUpdated(lastUpdated))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+					
+                    if externalIPManager.isLoading {
+                        HStack {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                            Text("Refreshing...")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
@@ -976,7 +964,6 @@ struct TabbedStatsView: View {
                                 Text(String(format: "%.0f%%", adapterInfo.efficiency))
                                     .font(.caption)
                                     .fontWeight(.semibold)
-                                    .monospacedDigit()
                                     .foregroundColor(getEfficiencyColor(for: adapterInfo.efficiency))
                             }
                         }
@@ -1362,75 +1349,46 @@ struct TabbedStatsView: View {
         }
     }
     
-    private var networkInterfacesCard: some View {
+    private var systemOverviewCard: some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(title: "Network Interface", icon: "network.badge.shield.half.filled", color: .green)
+                EnhancedCardHeaderView(title: "System Overview", icon: "desktopcomputer", color: .blue)
 			
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Active Interface")
-                            .font(.subheadline)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 8) {
+                    GlassInfoRowView(label: "Model", value: systemMonitor.systemInfo.modelName.isEmpty ? "Loading..." : systemMonitor.systemInfo.modelName)
+                    GlassInfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
+                    GlassInfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
+                    GlassInfoRowView(label: "Chip", value: systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
+                }
+            }
+        }
+    }
+    
+    private var quickBatteryCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 8) {
+                EnhancedCardHeaderView(title: "Battery", icon: getBatteryIconName(), color: getBatteryIconColor())
+			
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Charge Level")
+                            .font(.caption)
                             .foregroundColor(.secondary)
-                        Spacer()
-                        HStack(spacing: 6) {
-                            Image(systemName: getNetworkInterfaceIcon(for: preferences.selectedNetworkInterface))
-                                .foregroundColor(.green)
-                                .font(.subheadline)
-                            Text(preferences.selectedNetworkInterface)
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.green)
-                        }
+                        Text(String(format: "%.0f%%", systemMonitor.batteryInfo.chargeLevel))
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(batteryChargeColor(for: systemMonitor.batteryInfo.chargeLevel))
                     }
 					
-                    HStack {
-                        Text("Type")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(getNetworkInterfaceType(for: preferences.selectedNetworkInterface))
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .foregroundColor(.blue)
-                    }
+                    Spacer()
 					
-                    HStack {
-                        Text("Display Units")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(preferences.networkUnit == .bits ? "Bits/s" : "Bytes/s")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.blue)
-                    }
-					
-                    HStack {
-                        Text("Auto Scale")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(preferences.autoScaleNetwork ? "Enabled" : "Disabled")
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(preferences.autoScaleNetwork ? .green : .secondary)
-                    }
-					
-                    if !systemMonitor.networkInterfaces.isEmpty {
-                        Divider()
-						
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.secondary)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(systemMonitor.batteryInfo.isCharging ? "Charging" : "Not Charging")
+                            .font(.caption)
+                            .foregroundColor(systemMonitor.batteryInfo.isCharging ? .green : .secondary)
+                        if systemMonitor.batteryInfo.timeRemaining > 0 {
+                            Text(formatTime(systemMonitor.batteryInfo.timeRemaining))
                                 .font(.caption)
-                            Text("Total Interfaces Available")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text("\(systemMonitor.networkInterfaces.count)")
-                                .font(.caption)
-                                .fontWeight(.semibold)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -1439,230 +1397,269 @@ struct TabbedStatsView: View {
         }
     }
     
-    private var externalIPCard: some View {
+    private var quickUPSCard: some View {
         EnhancedCardView {
-            VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(title: "External IP", icon: "globe", color: .green)
+            VStack(alignment: .leading, spacing: 8) {
+                EnhancedCardHeaderView(title: "UPS", icon: getUPSIconName(), color: getUPSIconColor())
 			
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("IP Address")
-                            .font(.subheadline)
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Power Source")
+                            .font(.caption)
                             .foregroundColor(.secondary)
-                        Spacer()
-                        Text(externalIPManager.externalIP)
-                            .font(.title3)
+                        Text(systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource)
+                            .font(.subheadline)
                             .fontWeight(.semibold)
-                            .monospacedDigit()
-                            .foregroundColor(.green)
+                            .foregroundColor(getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                     }
 					
-                    if !externalIPManager.countryName.isEmpty {
+                    Spacer()
+					
+                    if systemMonitor.upsInfo.chargeLevel > 0 {
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("Charge")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.0f%%", systemMonitor.upsInfo.chargeLevel))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(upsChargeColor(for: systemMonitor.upsInfo.chargeLevel))
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var fullCPUCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 12) {
+                EnhancedCardHeaderView(title: "CPU Usage", icon: "cpu", color: .orange)
+			
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("Location")
+                            Text("Current Usage")
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             Spacer()
-                            HStack(spacing: 6) {
-                                Text(externalIPManager.flagEmoji)
-                                    .font(.title2)
-                                Text(externalIPManager.countryName)
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.blue)
-                            }
+                            Text(String(format: "%.1f%%", systemMonitor.cpuUsage))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
                         }
-                    }
-					
-                    if !externalIPManager.countryCode.isEmpty {
-                        GlassInfoRowView(label: "Country Code", value: externalIPManager.countryCode.uppercased())
-                    }
-					
-                    if let lastUpdated = externalIPManager.lastUpdated {
-                        Divider()
 						
-                        HStack {
+                        ProgressView(value: systemMonitor.cpuUsage, total: 100)
+                            .tint(usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)))
+                            .scaleEffect(y: 1.5)
+                    }
+					
+                    HStack {
+                        HStack(spacing: 4) {
+                            Image(systemName: "cpu.fill")
+                                .foregroundColor(.orange)
+                                .font(.caption)
+                            Text(systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+						
+                        Spacer()
+						
+                        HStack(spacing: 4) {
                             Image(systemName: "clock")
-                                .foregroundColor(.secondary)
+                                .foregroundColor(.blue)
                                 .font(.caption)
-                            Text("Last Updated")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(formatLastUpdated(lastUpdated))
+                            Text("Multi-core")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
                     }
 					
-                    if externalIPManager.isLoading {
-                        HStack {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                            Text("Refreshing...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                    if !systemMonitor.cpuHistory.isEmpty {
+                        Divider()
+						
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .foregroundColor(.orange)
+                                    .font(.caption)
+                                Text("Usage Trend")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+								
+                                let avgUsage = systemMonitor.cpuHistory.reduce(0, +) / Double(systemMonitor.cpuHistory.count)
+                                let maxUsage = systemMonitor.cpuHistory.max() ?? 0
+								
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text("Avg: \(String(format: "%.1f%%", avgUsage))")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Text("Peak: \(String(format: "%.1f%%", maxUsage))")
+                                        .font(.caption)
+                                        .monospacedDigit()
+                                        .foregroundColor(usageColor(for: maxUsage, thresholds: (30, 70)))
+                                }
+                            }
+							
+                            SparklineView(
+                                data: systemMonitor.cpuHistory,
+                                lineColor: usageColor(for: systemMonitor.cpuUsage, thresholds: (30, 70)),
+                                lineWidth: 2
+                            )
+                            .frame(height: 35)
                         }
                     }
-                }
-            }
-        }
-    }
-    
-    private var wifiCard: some View {
-        EnhancedCardView {
-            VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(
-                    title: "WiFi Status", 
-                    icon: wifiManager.getWiFiIconName(), 
-                    color: getWiFiCardColor()
-                )
-				
-                VStack(alignment: .leading, spacing: 8) {
-                    if wifiManager.wifiInfo.isConnected {
-                        HStack {
-                            Text("Network Name")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(wifiManager.wifiInfo.networkName)
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
-                        }
-                        
+					
+                    if !systemMonitor.topProcesses.isEmpty {
                         Divider()
 						
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                Text("Signal Strength")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    Text("\(wifiManager.wifiInfo.signalStrength) dBm")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .monospacedDigit()
-                                        .foregroundColor(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
-                                    
-                                    Text("(\(wifiManager.getSignalStrengthPercentage())%)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text("Quality: \(wifiManager.getSignalStrengthDescription())")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                    
-                                    HStack(spacing: 2) {
-                                        ForEach(0..<4) { index in
-                                            Rectangle()
-                                                .fill(index < getSignalBars(for: wifiManager.getSignalStrengthPercentage()) ? 
-                                                     getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength) : 
-                                                     Color.secondary.opacity(0.3))
-                                                .frame(width: 4, height: CGFloat(6 + index * 2))
-                                        }
-                                    }
-                                }
-                                
-                                ProgressView(value: Double(wifiManager.getSignalStrengthPercentage()), total: 100)
-                                    .tint(getSignalStrengthColor(for: wifiManager.wifiInfo.signalStrength))
-                                    .scaleEffect(y: 1.2)
-                            }
-                        }
-                        
-                        Divider()
-						
-                        GlassInfoRowView(label: "Security", value: wifiManager.wifiInfo.securityType, 
-                                       valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType))
-                        
-                    } else if !wifiManager.wifiInfo.hasPermission {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
+                                Image(systemName: "list.bullet")
                                     .foregroundColor(.orange)
-                                    .font(.title2)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Permission Required")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.orange)
-                                    Text("Additional Access Needed")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                    .font(.caption)
+                                Text("Top CPU Processes")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                                 Spacer()
                             }
-                            
-                            Text("WiFi information requires additional system permissions to access detailed network information. This is normal behavior on macOS for privacy protection.")
-                                .font(.caption)
+							
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(systemMonitor.topProcesses.prefix(5)) { process in
+                                    enhancedProcessRowView(process: process, isCPUView: true)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private var fullMemoryCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 12) {
+                EnhancedCardHeaderView(title: "Memory Usage", icon: "memorychip", color: .blue)
+			
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Used Memory")
+                                .font(.subheadline)
                                 .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                            
-                            if let errorMessage = wifiManager.wifiInfo.errorMessage {
-                                Text("Technical details: \(errorMessage)")
-                                    .font(.caption2)
+                            Spacer()
+                            Text(String(format: "%.1f GB / %.1f GB", systemMonitor.memoryUsage.used, systemMonitor.memoryUsage.total))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
+                        }
+						
+                        ProgressView(value: systemMonitor.memoryUsage.used, total: systemMonitor.memoryUsage.total)
+                            .tint(memoryUsageColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
+                            .scaleEffect(y: 1.5)
+                    }
+					
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 8, height: 8)
+                                Text("Free")
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
-                                    .italic()
+                            }
+							
+                            Spacer()
+                            
+                            let freeMemory = systemMonitor.memoryUsage.total - systemMonitor.memoryUsage.used
+                            let freePercent = (freeMemory / systemMonitor.memoryUsage.total) * 100
+                            
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(String(format: "%.1f GB", freeMemory))
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.green)
+                                Text(String(format: "%.1f%%", freePercent))
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundColor(.green)
                             }
                         }
                         
-                    } else {
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Image(systemName: "wifi.slash")
+                        HStack {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.blue)
+                                    .frame(width: 8, height: 8)
+                                Text("Used")
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
-                                    .font(.title2)
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("WiFi Disconnected")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.secondary)
-                                    Text("No Active Connection")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
                             }
                             
-                            Text("Connect to a WiFi network to see detailed connection information, signal strength, and security details.")
+                            Spacer()
+                            
+                            let usedPercent = (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100
+                            
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(String(format: "%.1f GB", systemMonitor.memoryUsage.used))
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.blue)
+                                Text(String(format: "%.1f%%", usedPercent))
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundColor(.blue)
+                            }
+                        }
+                        
+                        HStack {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
+                                    .frame(width: 8, height: 8)
+                                Text("Pressure")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Text(memoryPressureText(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                                 .font(.caption)
-                                .foregroundColor(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .fontWeight(.medium)
+                                .foregroundColor(memoryPressureColor(for: systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total * 100))
                         }
                     }
 					
-                    Divider()
-					
-                    HStack {
-                        Button(action: {
-                            wifiManager.refreshWiFiInfo()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.clockwise")
+                    if !systemMonitor.topMemoryProcesses.isEmpty {
+                        Divider()
+						
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "list.bullet")
+                                    .foregroundColor(.blue)
                                     .font(.caption)
-                                Text("Refresh WiFi Info")
+                                Text("Top Memory Processes")
                                     .font(.caption)
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                
+                                let totalMemUsage = systemMonitor.topMemoryProcesses.prefix(5).reduce(0) { $0 + $1.memoryUsage }
+                                Text("Total: \(String(format: "%.1f%%", totalMemUsage))")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .opacity(0.7)
+                                    .monospacedDigit()
                             }
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.blue)
-                        
-                        Spacer()
-                        
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text("Access: \(wifiManager.wifiInfo.hasPermission ? "Full" : "Limited")")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                            if wifiManager.wifiInfo.isConnected {
-                                Text("Connected")
-                                    .font(.caption2)
-                                    .foregroundColor(.green)
+							
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(systemMonitor.topMemoryProcesses.prefix(5)) { process in
+                                    enhancedProcessRowView(process: process, isCPUView: false)
+                                }
                             }
                         }
                     }
@@ -2261,7 +2258,6 @@ struct TabbedStatsView: View {
                     Text(String(format: "%.1f%% (%.1f GB / %.1f GB)", usedPercentage, usedSpace, drive.totalSpace))
                         .font(.caption)
                         .fontWeight(.medium)
-                        .monospacedDigit()
                         .foregroundColor(.purple)
                 }
                 
@@ -2373,4 +2369,3 @@ struct TabbedStatsView: View {
         }
     }
 }
-
