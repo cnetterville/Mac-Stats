@@ -14,7 +14,7 @@ struct MenuBarIconView: View {
     private let compactFont = Font.system(size: 9, weight: .regular, design: .monospaced)
     private let dataFont = Font.system(size: 11, weight: .regular, design: .monospaced)
     private let networkFont = Font.system(size: 9, weight: .regular, design: .monospaced)
-    private let compactSpacing: CGFloat = -3
+    private let compactSpacing: CGFloat = -4 // Reduced from -3 to -4
     
     var body: some View {
         Group {
@@ -26,7 +26,7 @@ struct MenuBarIconView: View {
             }
         }
         .foregroundColor(.white)
-        .frame(maxWidth: 300, maxHeight: 22) // Increased from 200 to 300
+        .frame(maxWidth: 250, maxHeight: 22) // Reduced from 300 to 250
         .fixedSize()
         .monospacedDigit()
     }
@@ -40,7 +40,7 @@ struct MenuBarIconView: View {
     }
     
     private func enabledStatsView() -> some View {
-        HStack(alignment: .center, spacing: 6) { // Changed from 7 to 6
+        HStack(alignment: .center, spacing: 2) { // Reduced from 3 to 2 to further decrease spacing
             if preferences.showCPU && preferences.showMenuBarCPU {
                 cpuStatView()
             }
@@ -57,7 +57,7 @@ struct MenuBarIconView: View {
                 uptimeStatView()
             }
         }
-        .frame(maxWidth: 400) // Increased from 300 to accommodate wider spacing
+        .frame(maxWidth: 350) // Reduced from 400
         .monospacedDigit()
     }
     
@@ -82,21 +82,21 @@ struct MenuBarIconView: View {
     @ViewBuilder
     private func uptimeStatView() -> some View {
         VStack(alignment: .center, spacing: compactSpacing) {
-            HStack(spacing: 1) { // Reduced spacing
+            HStack(spacing: 0) { // Reduced from 1 to 0
                 Image(systemName: "arrow.up")
                     .font(compactFont)
                     .foregroundColor(.green)
-                    .imageScale(.small) // Smaller image
+                    .imageScale(.small)
                 Text("UP")
                     .font(compactFont)
-                    .padding(.leading, 1) // Minimal padding
+                    .padding(.leading, 0) // Removed padding
             }
             Text(formatCompactUptime(systemMonitor.systemInfo.uptime))
                 .font(dataFont)
                 .minimumScaleFactor(0.8)
                 .lineLimit(1)
         }
-        .frame(width: 60) // Reduced width slightly
+        .frame(width: 50) // Reduced from 60
         .monospacedDigit()
     }
     
@@ -111,7 +111,7 @@ struct MenuBarIconView: View {
                 .font(dataFont)
                 .foregroundColor(cpuUsageColor()) // Only the percentage changes color
         }
-        .frame(width: 40)
+        .frame(width: 35) // Reduced from 40
         .monospacedDigit()
     }
     
@@ -137,7 +137,7 @@ struct MenuBarIconView: View {
             Text(String(format: "%.1fG", systemMonitor.memoryUsage.total - systemMonitor.memoryUsage.used))
                 .font(dataFont)
         }
-        .frame(width: 50) // Increased from 45
+        .frame(width: 45) // Reduced from 50
         .monospacedDigit()
     }
     
@@ -149,7 +149,7 @@ struct MenuBarIconView: View {
             Text(String(format: "%.0fG", systemMonitor.diskUsage.free))
                 .font(dataFont)
         }
-        .frame(width: 40)
+        .frame(width: 35) // Reduced from 40
         .monospacedDigit()
     }
     
@@ -159,12 +159,12 @@ struct MenuBarIconView: View {
         let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         
-        let speedWidth: CGFloat = 30 // Increased from 28
-        let unitWidth: CGFloat = 32  // Increased from 30
+        let speedWidth: CGFloat = 25 // Reduced from 30
+        let unitWidth: CGFloat = 28  // Reduced from 32
 
-        HStack(alignment: .center, spacing: -6) {
+        HStack(alignment: .center, spacing: -4) { // Keep spacing between network data and NIC label
             VStack(alignment: .leading, spacing: compactSpacing) {
-                HStack(spacing: 2) {
+                HStack(spacing: 1) { // Reduced from 2 to 1
                     Text(uploadFormatted.value)
                         .frame(width: speedWidth, alignment: .trailing)
                         .font(networkFont)
@@ -176,7 +176,7 @@ struct MenuBarIconView: View {
                         .font(networkFont)
                 }
                 
-                HStack(spacing: 2) {
+                HStack(spacing: 1) { // Reduced from 2 to 1
                     Text(downloadFormatted.value)
                         .frame(width: speedWidth, alignment: .trailing)
                         .font(networkFont)
@@ -190,7 +190,7 @@ struct MenuBarIconView: View {
             }
             
             // NIC label - placed to the right of all network data
-            VStack(alignment: .center, spacing: -4) {
+            VStack(alignment: .center, spacing: -3) { // Changed from -1 to 0 for minimal letter spacing
                 Text("N")
                     .font(compactFont)
                     .fontWeight(.regular)
@@ -203,7 +203,7 @@ struct MenuBarIconView: View {
             }
             .fixedSize()
         }
-        .frame(width: 80) // Increased from 85
+        .frame(width: 70) // Reduced from 80
         .monospacedDigit()
     }
 }
