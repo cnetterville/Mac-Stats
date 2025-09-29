@@ -159,10 +159,10 @@ struct MenuBarIconView: View {
         let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         
-        let speedWidth: CGFloat = 25 // Reduced from 30
-        let unitWidth: CGFloat = 28  // Reduced from 32
+        let speedWidth: CGFloat = 28 // Reduced from 30
+        let unitWidth: CGFloat = 30  // Reduced from 32
 
-        HStack(alignment: .center, spacing: -4) { // Keep spacing between network data and NIC label
+        HStack(alignment: .center, spacing: -3) { // Keep spacing between network data and NIC label
             VStack(alignment: .leading, spacing: compactSpacing) {
                 HStack(spacing: 1) { // Reduced from 2 to 1
                     Text(uploadFormatted.value)
@@ -190,20 +190,20 @@ struct MenuBarIconView: View {
             }
             
             // NIC label - placed to the right of all network data
-            VStack(alignment: .center, spacing: -3) { // Changed from -1 to 0 for minimal letter spacing
+            VStack(alignment: .center, spacing: -4) { // Changed from -1 to 0 for minimal letter spacing
+                Text("L")
+                    .font(compactFont)
+                    .fontWeight(.regular)
+                Text("A")
+                    .font(compactFont)
+                    .fontWeight(.regular)
                 Text("N")
-                    .font(compactFont)
-                    .fontWeight(.regular)
-                Text("I")
-                    .font(compactFont)
-                    .fontWeight(.regular)
-                Text("C")
                     .font(compactFont)
                     .fontWeight(.regular)
             }
             .fixedSize()
         }
-        .frame(width: 70) // Reduced from 80
+        .frame(width: 80) // Reduced from 80
         .monospacedDigit()
     }
 }
