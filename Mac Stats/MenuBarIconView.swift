@@ -162,15 +162,12 @@ struct MenuBarIconView: View {
         let speedWidth: CGFloat = 32
         let unitWidth: CGFloat = 34
 
-        HStack(alignment: .center, spacing: -3) {
+        HStack(alignment: .center, spacing: -8) {
             VStack(alignment: .leading, spacing: compactSpacing) {
                 HStack(spacing: 1) {
                     Text(uploadFormatted.value)
                         .frame(width: speedWidth, alignment: .trailing)
                         .font(networkFont)
-                    Image(systemName: "arrow.up")
-                        .foregroundColor(.red)
-                        .imageScale(.small)
                     Text(uploadFormatted.unit)
                         .frame(width: unitWidth, alignment: .leading)
                         .font(networkFont)
@@ -180,27 +177,35 @@ struct MenuBarIconView: View {
                     Text(downloadFormatted.value)
                         .frame(width: speedWidth, alignment: .trailing)
                         .font(networkFont)
-                    Image(systemName: "arrow.down")
-                        .foregroundColor(.blue)
-                        .imageScale(.small)
                     Text(downloadFormatted.unit)
                         .frame(width: unitWidth, alignment: .leading)
                         .font(networkFont)
                 }
             }
             
-            VStack(alignment: .center, spacing: -4) {
-                Text("L")
-                    .font(compactFont)
-                    .fontWeight(.regular)
-                Text("A")
-                    .font(compactFont)
-                    .fontWeight(.regular)
-                Text("N")
-                    .font(compactFont)
-                    .fontWeight(.regular)
+            HStack(spacing: 0) {
+                VStack(alignment: .center, spacing: 0) {
+                    Image(systemName: "arrow.up")
+                        .foregroundColor(.red)
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    Image(systemName: "arrow.down")
+                        .foregroundColor(.blue)
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                }
+                
+                VStack(alignment: .center, spacing: -4) {
+                    Text("L")
+                        .font(compactFont)
+                        .fontWeight(.regular)
+                    Text("A")
+                        .font(compactFont)
+                        .fontWeight(.regular)
+                    Text("N")
+                        .font(compactFont)
+                        .fontWeight(.regular)
+                }
+                .fixedSize()
             }
-            .fixedSize()
         }
         .frame(width: 95)
         .monospacedDigit()
