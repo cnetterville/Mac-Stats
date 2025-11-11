@@ -250,8 +250,8 @@ class SystemMonitor: ObservableObject {
     // MARK: - Constants
     private struct Constants {
         static let maxHistoryPoints = 30
-        static let defaultUpdateInterval: TimeInterval = 2.0
-        static let defaultPowerUpdateInterval: TimeInterval = 30.0
+        static let defaultUpdateInterval: TimeInterval = 3.0
+        static let defaultPowerUpdateInterval: TimeInterval = 60.0
         static let externalIPRefreshInterval: TimeInterval = 30 * 60 // 30 minutes
         static let notificationCooldownPeriod: TimeInterval = 300 // 5 minutes
         static let gbDivisor: Double = 1000 * 1000 * 1000 // Use decimal GB
@@ -260,6 +260,8 @@ class SystemMonitor: ObservableObject {
         static let minMemoryUsageFilter = 0.1
         // Network interface assumptions: en2 is assumed to be WiFi to avoid interference with bonded interfaces (en0/en1)
         static let preferredWiFiInterface = "en2"
+        static let systemInfoCacheInterval: TimeInterval = 300.0
+        static let networkProcessUpdateInterval: TimeInterval = 5.0
     }
     
     // MARK: - Published Properties
@@ -296,6 +298,11 @@ class SystemMonitor: ObservableObject {
     private var previousCPUInfo = host_cpu_load_info()
     private var activeNetworkInterfaces: [String] = []
     private var hasBondedInterfaces: Bool = false // Track if we have a bonded configuration
+    private var cachedSystemInfo: SystemInfo?
+    private var lastSystemInfoUpdate: Date = Date.distantPast
+    private var networkProcessUpdateCounter: Int = 0
+    private var cachedNetworkProcesses: [ProcessNetworkInfo] = []
+    private var networkProcessTimer: Timer?
     weak var preferences: PreferencesManager? {
         didSet {
             // Update intervals when preferences are set
@@ -305,7 +312,6 @@ class SystemMonitor: ObservableObject {
             }
         }
     }
-    
     init() {
         refreshNetworkInterfaces()
         // Data will be refreshed when the view appears.
@@ -331,6 +337,9 @@ class SystemMonitor: ObservableObject {
         powerTimer = Timer.scheduledTimer(withTimeInterval: powerUpdateInterval, repeats: true) { [weak self] _ in
             self?.updatePowerConsumption()
         }
+        
+        // Update network processes with separate timer
+        startNetworkProcessUpdates()
     }
     
     func stopMonitoring() {
@@ -338,6 +347,7 @@ class SystemMonitor: ObservableObject {
         timer = nil
         powerTimer?.invalidate()
         powerTimer = nil
+        stopNetworkProcessUpdates()
     }
     
     // Reset UPS power state tracking (useful when restarting monitoring)
@@ -537,15 +547,15 @@ class SystemMonitor: ObservableObject {
                 // Track specific interfaces for bonding detection
                 if interfaceName == "bond0" {
                     hasBond0 = true
-                    print("🔗 Detected bond0 interface")
+                    print(" Detected bond0 interface")
                 }
                 if interfaceName == "en0" {
                     hasEn0 = true
-                    print("🔗 Detected en0 interface")
+                    print(" Detected en0 interface")
                 }
                 if interfaceName == "en1" {
                     hasEn1 = true
-                    print("🔗 Detected en1 interface")
+                    print(" Detected en1 interface")
                 }
                 
                 // Filter out loopback and inactive interfaces
@@ -555,13 +565,13 @@ class SystemMonitor: ObservableObject {
                     // Check if interface is active by looking for UP and RUNNING flags
                     if trimmedLine.contains("UP") && trimmedLine.contains("RUNNING") {
                         activeInterfaces.append(interfaceName)
-                        print("🔗 Active interface: \(interfaceName)")
+                        print(" Active interface: \(interfaceName)")
                     }
                 }
             }
         }
         
-        print("🔗 Bond detection - bond0: \(hasBond0), en0: \(hasEn0), en1: \(hasEn1)")
+        print(" Bond detection - bond0: \(hasBond0), en0: \(hasEn0), en1: \(hasEn1)")
         
         // Add a "Combined" interface option if we have multiple active interfaces
         if activeInterfaces.count >= 2 {
@@ -579,7 +589,7 @@ class SystemMonitor: ObservableObject {
             return interface1 < interface2
         }
         
-        print("🔗 Final sorted interfaces: \(sortedInterfaces)")
+        print(" Final sorted interfaces: \(sortedInterfaces)")
         
         // Thread-safe updates
         DispatchQueue.main.async {
@@ -679,24 +689,37 @@ class SystemMonitor: ObservableObject {
             let network = self.getCurrentNetwork()
             let processes = self.getTopProcesses(count: Constants.processCountThreshold)
             let memoryProcesses = self.getTopMemoryProcesses(count: Constants.processCountThreshold)
-            let networkProcesses = self.getTopNetworkProcesses(count: Constants.processCountThreshold) // Add network processes
+            
+            self.networkProcessUpdateCounter += 1
+            let networkProcesses: [ProcessNetworkInfo]
+            if self.networkProcessUpdateCounter >= Int(Constants.networkProcessUpdateInterval / self.updateInterval) {
+                networkProcesses = self.getTopNetworkProcesses(count: Constants.processCountThreshold)
+                self.cachedNetworkProcesses = networkProcesses
+                self.networkProcessUpdateCounter = 0
+            } else {
+                networkProcesses = self.cachedNetworkProcesses
+            }
+            
             let ups = self.getCurrentUPSInfo()
             let battery = self.getCurrentBatteryInfo()
-            let systemInfo = self.getCurrentSystemInfo()
+            
+            let systemInfo = self.getCachedOrFreshSystemInfo()
             
             DispatchQueue.main.async {
                 self.updateCPUHistory(with: cpu)
                 self.updateCPUTemperatureHistory(with: cpuTemp)
                 self.updateNetworkHistory(upload: network.upload, download: network.download)
+                
+                // Update all properties at once to minimize objectWillChange notifications
                 self.cpuUsage = cpu
                 self.cpuTemperature = cpuTemp
-                self.fanInfo = fan // Update fan info
+                self.fanInfo = fan
                 self.memoryUsage = memory
                 self.diskUsage = disk
                 self.networkUsage = network
                 self.topProcesses = processes
                 self.topMemoryProcesses = memoryProcesses
-                self.topNetworkProcesses = networkProcesses // Update network processes
+                self.topNetworkProcesses = networkProcesses
                 self.upsInfo = ups
                 self.batteryInfo = battery
                 self.systemInfo = systemInfo
@@ -715,6 +738,37 @@ class SystemMonitor: ObservableObject {
             
             DispatchQueue.main.async {
                 self.powerConsumptionInfo = powerConsumption
+            }
+        }
+    }
+    
+    private func startNetworkProcessUpdates() {
+        networkProcessTimer = Timer.scheduledTimer(withTimeInterval: Constants.networkProcessUpdateInterval, repeats: true) { [weak self] _ in
+            self?.updateNetworkProcesses()
+        }
+    }
+    
+    private func stopNetworkProcessUpdates() {
+        networkProcessTimer?.invalidate()
+        networkProcessTimer = nil
+    }
+    
+    func updateNetworkProcesses() {
+        // Implement throttling logic
+        networkProcessUpdateCounter += 1
+        
+        if networkProcessUpdateCounter >= 10 {
+            networkProcessUpdateCounter = 0
+            // Refresh the cached network processes
+            cachedNetworkProcesses = getTopNetworkProcesses(count: Constants.processCountThreshold)
+            return
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let networkProcesses = self.cachedNetworkProcesses
+            
+            DispatchQueue.main.async {
+                self.topNetworkProcesses = networkProcesses
             }
         }
     }
@@ -864,7 +918,7 @@ class SystemMonitor: ObservableObject {
         
         // Check which interface is selected
         let selectedInterface = preferences?.selectedNetworkInterface ?? "All"
-        print("🌐 Selected interface for monitoring: '\(selectedInterface)'")
+        print(" Selected interface for monitoring: '\(selectedInterface)'")
         
         // Collect current stats for all interfaces
         var currentStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
@@ -894,10 +948,10 @@ class SystemMonitor: ObservableObject {
                 totalBytesIn += bondedBytesIn
                 totalBytesOut += bondedBytesOut
                 
-                print("📊 Bond0 stats - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
-                print("📊 Bond0 stats - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
-                print("📊 Bond0 stats - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
-                print("📊 Bond0 stats - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
+                print(" Bond0 stats - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
+                print(" Bond0 stats - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
+                print(" Bond0 stats - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
+                print(" Bond0 stats - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
                 
                 // Don't double count en0 and en1 when bond0 is present
                 continue
@@ -992,10 +1046,10 @@ class SystemMonitor: ObservableObject {
                 
                 currentStats[selectedInterface] = (bytesIn: bondedBytesIn, bytesOut: bondedBytesOut)
                 
-                print("🔗 Bond0 initial - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
-                print("🔗 Bond0 initial - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
-                print("🔗 Bond0 initial - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
-                print("🔗 Bond0 initial - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
+                print(" Bond0 initial - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
+                print(" Bond0 initial - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
+                print(" Bond0 initial - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
+                print(" Bond0 initial - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
                 
                 if let current = currentStats[selectedInterface],
                    let previous = previousInterfaceStats[selectedInterface] {
@@ -1005,8 +1059,8 @@ class SystemMonitor: ObservableObject {
                     bytesInRate = Double(bytesInDiff) / timeInterval
                     bytesOutRate = Double(bytesOutDiff) / timeInterval
                     
-                    print("📊 Bond0 rate calculation: In: \(bytesInRate) B/s, Out: \(bytesOutRate) B/s")
-                    print("📊 Bond0 differences: InDiff=\(bytesInDiff), OutDiff=\(bytesOutDiff), TimeInterval=\(timeInterval)")
+                    print(" Bond0 rate calculation: In: \(bytesInRate) B/s, Out: \(bytesOutRate) B/s")
+                    print(" Bond0 differences: InDiff=\(bytesInDiff), OutDiff=\(bytesOutDiff), TimeInterval=\(timeInterval)")
                 }
             } else {
                 // Calculate for specific interface only
@@ -1061,7 +1115,7 @@ class SystemMonitor: ObservableObject {
             let commandString = components[3...].joined(separator: " ")
             
             // Filter with constant threshold
-            if cpu > Constants.minCpuUsageFilter || parsedProcesses.count < count {
+            if cpu > Constants.minCpuUsageFilter {
                 parsedProcesses.append(SystemProcessInfo(
                     pid: pid,
                     name: commandString,
@@ -1076,16 +1130,16 @@ class SystemMonitor: ObservableObject {
     }
     
     private func getTopMemoryProcesses(count: Int) -> [SystemProcessInfo] {
-        guard let output = executeCommand("/bin/ps", ["-A", "-m", "-o", "pid,%mem,%cpu,comm", "-c"]) else {
+        guard let output = executeCommand("/bin/ps", ["-A", "-o", "pid,%mem,%cpu,comm", "-c"]) else {
             print("Error getting memory process info")
             return []
         }
         
         let lines = output.split(separator: "\n").dropFirst() // Skip header
         var parsedProcesses: [SystemProcessInfo] = []
-        parsedProcesses.reserveCapacity(min(count + 5, lines.count))
+        parsedProcesses.reserveCapacity(lines.count)
         
-        for line in lines.prefix(count + 5) { // Only process what we need
+        for line in lines {
             let components = line.split(separator: " ").compactMap { $0.isEmpty ? nil : String($0) }
             
             guard components.count >= 4,
@@ -1107,7 +1161,8 @@ class SystemMonitor: ObservableObject {
             }
         }
         
-        return Array(parsedProcesses.prefix(count))
+        // Sort by memory and return top processes
+        return Array(parsedProcesses.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count))
     }
     
     // MARK: - Process Network Monitoring Methods
@@ -1128,26 +1183,26 @@ class SystemMonitor: ObservableObject {
         
         for path in possiblePaths {
             if FileManager.default.fileExists(atPath: path) {
-                print("🌐 Found nettop at: \(path)")
+                print(" Found nettop at: \(path)")
                 
                 let nettopArgs = ["-P", "-L", "1"]
-                print("🌐 Running: \(path) \(nettopArgs.joined(separator: " "))")
+                print(" Running: \(path) \(nettopArgs.joined(separator: " "))")
                 
                 if let output = executeCommand(path, nettopArgs) {
                     if !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        print("🌐 nettop succeeded!")
-                        print("🌐 First 500 chars: \(String(output.prefix(500)))")
+                        print(" nettop succeeded!")
+                        print(" First 500 chars: \(String(output.prefix(500)))")
                         return output
                     } else {
-                        print("🌐 nettop returned empty output")
+                        print(" nettop returned empty output")
                     }
                 } else {
-                    print("🌐 nettop execution failed")
+                    print(" nettop execution failed")
                 }
             }
         }
         
-        print("🌐 nettop not found in any standard location")
+        print(" nettop not found in any standard location")
         return ""
     }
     
@@ -1155,7 +1210,7 @@ class SystemMonitor: ObservableObject {
         let lines = output.split(separator: "\n")
         var processNetworkInfos: [ProcessNetworkInfo] = []
         
-        print("🌐 Parsing nettop CSV format with \(lines.count) lines")
+        print(" Parsing nettop CSV format with \(lines.count) lines")
         
         // Skip the header line (first line contains column names)
         for (lineIndex, line) in lines.enumerated().dropFirst() {
@@ -1165,17 +1220,17 @@ class SystemMonitor: ObservableObject {
             
             if let processInfo = parseNettopCSVLine(String(trimmedLine), lineIndex: lineIndex) {
                 processNetworkInfos.append(processInfo)
-                print("🌐 Parsed: \(processInfo.name) (PID: \(processInfo.pid)) - In: \(processInfo.bytesIn), Out: \(processInfo.bytesOut)")
+                print(" Parsed: \(processInfo.name) (PID: \(processInfo.pid)) - In: \(processInfo.bytesIn), Out: \(processInfo.bytesOut)")
             }
         }
         
-        print("🌐 Successfully parsed \(processNetworkInfos.count) processes from nettop CSV")
+        print(" Successfully parsed \(processNetworkInfos.count) processes from nettop CSV")
         
         // Filter out processes with zero network activity and sort by total usage
         let activeProcesses = processNetworkInfos.filter { $0.totalUsage > 0 }
         let sortedProcesses = activeProcesses.sorted { $0.totalUsage > $1.totalUsage }
         
-        print("🌐 Found \(activeProcesses.count) processes with network activity")
+        print(" Found \(activeProcesses.count) processes with network activity")
         
         return Array(sortedProcesses.prefix(maxCount))
     }
@@ -1186,14 +1241,14 @@ class SystemMonitor: ObservableObject {
         
         // Expected format: time,process_name.PID,,,bytes_in,bytes_out,...
         guard components.count >= 6 else {
-            print("🌐 Line \(lineIndex) has insufficient columns: \(components.count)")
+            print(" Line \(lineIndex) has insufficient columns: \(components.count)")
             return nil
         }
         
         // Extract process name and PID from second column (format: "process_name.PID")
         let processField = components[1]
         guard !processField.isEmpty else {
-            print("🌐 Line \(lineIndex) has empty process field")
+            print(" Line \(lineIndex) has empty process field")
             return nil
         }
         
@@ -1258,7 +1313,7 @@ class SystemMonitor: ObservableObject {
             uptime = Date().timeIntervalSince(bootTime)
         }
         
-        return SystemInfo(
+        let systemInfo = SystemInfo(
             modelName: modelName,
             macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             kernelVersion: kernelVersion,
@@ -1266,6 +1321,10 @@ class SystemMonitor: ObservableObject {
             bootTime: bootTime,
             chipInfo: chipInfo
         )
+        
+        cachedSystemInfo = systemInfo
+        lastSystemInfoUpdate = Date()
+        return systemInfo
     }
     
     // Helper to get hardware info in single call
@@ -1273,7 +1332,7 @@ class SystemMonitor: ObservableObject {
         guard let output = executeCommand("/usr/sbin/system_profiler", ["SPHardwareDataType"]) else {
             // Fallback to sysctl for model name only
             let modelName = executeCommand("/usr/sbin/sysctl", ["-n", "hw.model"]) ?? "Unknown"
-            return (modelName: modelName.trimmingCharacters(in: .whitespacesAndNewlines), chipInfo: "Unknown")
+            return (modelName: modelName.trimmingCharacters(in: .whitespaces), chipInfo: "Unknown")
         }
         
         var modelName = "Unknown"
@@ -1302,6 +1361,48 @@ class SystemMonitor: ObservableObject {
         }
         
         return (modelName: modelName, chipInfo: chipInfo)
+    }
+    
+    private func getCachedOrFreshSystemInfo() -> SystemInfo {
+        let now = Date()
+        
+        // Return cached info if it's still valid (less than 5 minutes old)
+        if let cached = cachedSystemInfo,
+           now.timeIntervalSince(lastSystemInfoUpdate) < Constants.systemInfoCacheInterval {
+            // Still update uptime since that changes
+            var updated = cached
+            let uptimeInfo = getUptimeInfo()
+            return SystemInfo(
+                modelName: cached.modelName,
+                macOSVersion: cached.macOSVersion,
+                kernelVersion: cached.kernelVersion,
+                uptime: uptimeInfo.uptime,
+                bootTime: uptimeInfo.bootTime,
+                chipInfo: cached.chipInfo
+            )
+        }
+        
+        // Cache has expired, get fresh data
+        let freshInfo = getCurrentSystemInfo()
+        cachedSystemInfo = freshInfo
+        lastSystemInfoUpdate = now
+        return freshInfo
+    }
+    
+    // Lightweight method to get just uptime info
+    private func getUptimeInfo() -> (uptime: TimeInterval, bootTime: Date) {
+        var mib = [CTL_KERN, KERN_BOOTTIME]
+        var boottime = timeval()
+        var size = MemoryLayout<timeval>.size
+        
+        let result = sysctl(&mib, 2, &boottime, &size, nil, 0)
+        if result == 0 {
+            let bootTime = Date(timeIntervalSince1970: Double(boottime.tv_sec) + Double(boottime.tv_usec) / 1_000_000)
+            let uptime = Date().timeIntervalSince(bootTime)
+            return (uptime: uptime, bootTime: bootTime)
+        }
+        
+        return (uptime: 0, bootTime: Date())
     }
     
     private func getCurrentFanInfo() -> FanInfo {
@@ -1887,7 +1988,7 @@ class SystemMonitor: ObservableObject {
         
         if isPowerRestored {
             // Power restored
-            subject = "🔌 UPS: AC Power Restored"
+            subject = " UPS: AC Power Restored"
             message = """
             AC power has been restored to your system.
             
@@ -1902,7 +2003,7 @@ class SystemMonitor: ObservableObject {
             """
         } else {
             // On battery power
-            subject = "⚠️ UPS: Running on Battery Power"
+            subject = " UPS: Running on Battery Power"
             let timeRemainingText = upsInfo.timeRemaining > 0 ? 
                 String(format: "%.0f minutes", upsInfo.timeRemaining) : "Unknown"
             
@@ -1936,9 +2037,9 @@ class SystemMonitor: ObservableObject {
             DispatchQueue.main.async {
                 switch result {
                 case .success(let response):
-                    print("🔔 UPS power change notification sent successfully: \(response)")
+                    print(" UPS power change notification sent successfully: \(response)")
                 case .failure(let error):
-                    print("❌ Failed to send UPS power change notification: \(error)")
+                    print(" Failed to send UPS power change notification: \(error)")
                 }
             }
         }
@@ -1957,7 +2058,7 @@ class SystemMonitor: ObservableObject {
         do {
             #if DEBUG
             if executablePath.contains("nettop") || executablePath.contains("lsof") {
-                print("🔧 Debug: Executing \(executablePath) with args: \(arguments)")
+                print(" Debug: Executing \(executablePath) with args: \(arguments)")
             }
             #endif
             
@@ -1970,7 +2071,7 @@ class SystemMonitor: ObservableObject {
             }
             
             if task.isRunning {
-                print("⚠️ Command timeout: \(executablePath)")
+                print(" Command timeout: \(executablePath)")
                 task.terminate()
                 return nil
             }
@@ -1980,8 +2081,8 @@ class SystemMonitor: ObservableObject {
             
             if task.terminationStatus != 0 {
                 let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
-                print("❌ Command failed: \(executablePath) (status: \(task.terminationStatus))")
-                print("❌ Error output: \(errorOutput)")
+                print(" Command failed: \(executablePath) (status: \(task.terminationStatus))")
+                print(" Error output: \(errorOutput)")
                 return nil
             }
             
@@ -1989,13 +2090,13 @@ class SystemMonitor: ObservableObject {
             
             #if DEBUG
             if executablePath.contains("nettop") || executablePath.contains("lsof") {
-                print("✅ Command succeeded: \(executablePath), output length: \(result?.count ?? 0)")
+                print(" Command succeeded: \(executablePath), output length: \(result?.count ?? 0)")
             }
             #endif
             
             return result
         } catch {
-            print("❌ Error executing \(executablePath): \(error)")
+            print(" Error executing \(executablePath): \(error)")
             return nil
         }
     }
