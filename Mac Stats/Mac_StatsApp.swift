@@ -113,33 +113,57 @@ struct MenuBarDropdownView: View {
     @EnvironmentObject var systemMonitor: SystemMonitor
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // CPU Section
-                CPUSectionView(openWindow: openWindow)
-                    .environmentObject(systemMonitor)
-                
-                Divider()
-                    .padding(.vertical, 8)
-                
-                // Memory Section
-                MemorySectionView(openWindow: openWindow)
-                    .environmentObject(systemMonitor)
-                
-                // Bottom actions
-                HStack(spacing: 16) {
-                    Button("Settings") {
-                        openWindow(id: "settings")
-                        dismissMenu()
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button("Quit") {
-                        NSApplication.shared.terminate(nil)
-                    }
-                    .buttonStyle(.plain)
+        VStack(spacing: 0) {
+            // Quick action buttons at top
+            HStack(spacing: 8) {
+                Button(action: {
+                    openWindow(id: "main")
+                    dismissMenu()
+                }) {
+                    Label("Open", systemImage: "gauge")
+                        .font(.system(size: 11))
                 }
-                .padding(.vertical, 12)
+                .buttonStyle(.bordered)
+                
+                Button(action: {
+                    openWindow(id: "settings")
+                    dismissMenu()
+                }) {
+                    Label("Settings", systemImage: "gearshape")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                
+                Spacer()
+                
+                Button(action: {
+                    NSApplication.shared.terminate(nil)
+                }) {
+                    Label("Quit", systemImage: "power")
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
+            
+            Divider()
+            
+            ScrollView {
+                VStack(spacing: 0) {
+                    // CPU Section
+                    CPUSectionView(openWindow: openWindow)
+                        .environmentObject(systemMonitor)
+                    
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    // Memory Section
+                    MemorySectionView(openWindow: openWindow)
+                        .environmentObject(systemMonitor)
+                }
             }
         }
         .frame(width: 300, height: 600)
