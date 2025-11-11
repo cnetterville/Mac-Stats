@@ -15,6 +15,25 @@ enum NetworkUnit: Int, CaseIterable {
     case bits = 1
 }
 
+enum NetworkMonitoringMode: Int, CaseIterable {
+    case interface = 0
+    case process = 1
+    
+    var name: String {
+        switch self {
+        case .interface: return "Interface-based"
+        case .process: return "Process-based"
+        }
+    }
+    
+    var description: String {
+        switch self {
+        case .interface: return "Monitor total traffic by network interface (en0, Wi-Fi, etc.)"
+        case .process: return "Monitor network usage by application/process"
+        }
+    }
+}
+
 enum TemperatureUnit: Int, CaseIterable {
     case celsius = 0
     case fahrenheit = 1
@@ -53,6 +72,7 @@ class PreferencesManager: ObservableObject {
         case launchAtStartup = "launchAtStartup"
         case selectedNetworkInterface = "selectedNetworkInterface"
         case networkUnit = "networkUnit"
+        case networkMonitoringMode = "networkMonitoringMode"
         case autoScaleNetwork = "autoScaleNetwork"
         case temperatureUnit = "temperatureUnit"
         case showBothTemperatureUnits = "showBothTemperatureUnits"
@@ -66,6 +86,9 @@ class PreferencesManager: ObservableObject {
         case upsPowerChangeNotificationEnabled = "upsPowerChangeNotificationEnabled"
         case ipChangeNotificationEnabled = "ipChangeNotificationEnabled"
         case ipChangeNotificationInterval = "ipChangeNotificationInterval"
+        // Scheduled IP checking
+        case scheduledIPCheckEnabled = "scheduledIPCheckEnabled"
+        case scheduledIPCheckInterval = "scheduledIPCheckInterval"
     }
     
     // MARK: - Published Properties
@@ -85,6 +108,7 @@ class PreferencesManager: ObservableObject {
     @Published var launchAtStartup: Bool = false
     @Published var selectedNetworkInterface: String = "All"
     @Published var networkUnit: NetworkUnit = .bytes
+    @Published var networkMonitoringMode: NetworkMonitoringMode = .interface
     @Published var autoScaleNetwork: Bool = true
     @Published var temperatureUnit: TemperatureUnit = .celsius
     @Published var showBothTemperatureUnits: Bool = false
@@ -104,6 +128,10 @@ class PreferencesManager: ObservableObject {
     // IP Change Notification Settings
     @Published var ipChangeNotificationEnabled: Bool = false
     @Published var ipChangeNotificationInterval: Double = 300.0  // 5 minutes default
+    
+    // Scheduled IP Check Settings
+    @Published var scheduledIPCheckEnabled: Bool = false
+    @Published var scheduledIPCheckInterval: Double = 1800.0  // 30 minutes default
     
     // MARK: - Private Properties
     private var cancellables = Set<AnyCancellable>()
@@ -162,6 +190,7 @@ class PreferencesManager: ObservableObject {
         UserDefaults.standard.set(launchAtStartup, forKey: Keys.launchAtStartup.rawValue)
         UserDefaults.standard.set(selectedNetworkInterface, forKey: Keys.selectedNetworkInterface.rawValue)
         UserDefaults.standard.set(networkUnit.rawValue, forKey: Keys.networkUnit.rawValue)
+        UserDefaults.standard.set(networkMonitoringMode.rawValue, forKey: Keys.networkMonitoringMode.rawValue)
         UserDefaults.standard.set(autoScaleNetwork, forKey: Keys.autoScaleNetwork.rawValue)
         UserDefaults.standard.set(temperatureUnit.rawValue, forKey: Keys.temperatureUnit.rawValue)
         UserDefaults.standard.set(showBothTemperatureUnits, forKey: Keys.showBothTemperatureUnits.rawValue)
@@ -177,6 +206,10 @@ class PreferencesManager: ObservableObject {
         UserDefaults.standard.set(upsPowerChangeNotificationEnabled, forKey: Keys.upsPowerChangeNotificationEnabled.rawValue)
         UserDefaults.standard.set(ipChangeNotificationEnabled, forKey: Keys.ipChangeNotificationEnabled.rawValue)
         UserDefaults.standard.set(ipChangeNotificationInterval, forKey: Keys.ipChangeNotificationInterval.rawValue)
+        
+        // Scheduled IP check settings
+        UserDefaults.standard.set(scheduledIPCheckEnabled, forKey: Keys.scheduledIPCheckEnabled.rawValue)
+        UserDefaults.standard.set(scheduledIPCheckInterval, forKey: Keys.scheduledIPCheckInterval.rawValue)
         
         updateLaunchAtStartupSetting()
         
@@ -207,6 +240,7 @@ class PreferencesManager: ObservableObject {
         launchAtStartup = UserDefaults.standard.bool(forKey: Keys.launchAtStartup.rawValue)
         selectedNetworkInterface = UserDefaults.standard.string(forKey: Keys.selectedNetworkInterface.rawValue) ?? "All"
         networkUnit = NetworkUnit(rawValue: UserDefaults.standard.integer(forKey: Keys.networkUnit.rawValue)) ?? .bytes
+        networkMonitoringMode = NetworkMonitoringMode(rawValue: UserDefaults.standard.integer(forKey: Keys.networkMonitoringMode.rawValue)) ?? .interface
         autoScaleNetwork = UserDefaults.standard.object(forKey: Keys.autoScaleNetwork.rawValue) as? Bool ?? true
         temperatureUnit = TemperatureUnit(rawValue: UserDefaults.standard.integer(forKey: Keys.temperatureUnit.rawValue)) ?? .celsius
         showBothTemperatureUnits = UserDefaults.standard.bool(forKey: Keys.showBothTemperatureUnits.rawValue)
@@ -222,6 +256,10 @@ class PreferencesManager: ObservableObject {
         upsPowerChangeNotificationEnabled = UserDefaults.standard.object(forKey: Keys.upsPowerChangeNotificationEnabled.rawValue) as? Bool ?? true
         ipChangeNotificationEnabled = UserDefaults.standard.bool(forKey: Keys.ipChangeNotificationEnabled.rawValue)
         ipChangeNotificationInterval = UserDefaults.standard.double(forKey: Keys.ipChangeNotificationInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.ipChangeNotificationInterval.rawValue) : 300.0
+        
+        // Scheduled IP check settings
+        scheduledIPCheckEnabled = UserDefaults.standard.bool(forKey: Keys.scheduledIPCheckEnabled.rawValue)
+        scheduledIPCheckInterval = UserDefaults.standard.double(forKey: Keys.scheduledIPCheckInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.scheduledIPCheckInterval.rawValue) : 1800.0
     }
     
     private func setupChangeObservers() {
@@ -242,6 +280,7 @@ class PreferencesManager: ObservableObject {
         $launchAtStartup.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $selectedNetworkInterface.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $networkUnit.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $networkMonitoringMode.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $autoScaleNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $temperatureUnit.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $showBothTemperatureUnits.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
@@ -259,5 +298,9 @@ class PreferencesManager: ObservableObject {
         $upsPowerChangeNotificationEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $ipChangeNotificationEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
         $ipChangeNotificationInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        
+        // Scheduled IP check settings
+        $scheduledIPCheckEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        $scheduledIPCheckInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
     }
 }

@@ -21,6 +21,22 @@ struct SystemProcessInfo: Identifiable {
     let memoryUsage: Double
 }
 
+// Struct to hold Process Network Information
+struct ProcessNetworkInfo: Identifiable {
+    let id = UUID()
+    let pid: Int32
+    let name: String
+    let bytesIn: Double // bytes per second
+    let bytesOut: Double // bytes per second
+    let connections: Int
+    let state: String // "ESTABLISHED", "LISTEN", etc.
+    
+    // Total network usage for sorting
+    var totalUsage: Double {
+        return bytesIn + bytesOut
+    }
+}
+
 // Struct to hold UPS information
 struct UPSInfo {
     let name: String
@@ -256,6 +272,7 @@ class SystemMonitor: ObservableObject {
     @Published var networkInterfaces: [String] = []
     @Published var topProcesses: [SystemProcessInfo] = []
     @Published var topMemoryProcesses: [SystemProcessInfo] = []
+    @Published var topNetworkProcesses: [ProcessNetworkInfo] = [] // Add process network data
     @Published var upsInfo: UPSInfo = UPSInfo() // UPS information
     @Published var batteryInfo: BatteryInfo = BatteryInfo() // Battery information
     @Published var systemInfo: SystemInfo = SystemInfo() // System information
@@ -380,6 +397,7 @@ class SystemMonitor: ObservableObject {
         var systemInfo: SystemInfo = SystemInfo()
         var processes: [SystemProcessInfo] = []
         var memoryProcesses: [SystemProcessInfo] = []
+        var networkProcesses: [ProcessNetworkInfo] = []
         
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async {
@@ -453,6 +471,12 @@ class SystemMonitor: ObservableObject {
             group.leave()
         }
         
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            networkProcesses = self.getTopNetworkProcesses(count: Constants.processCountThreshold)
+            group.leave()
+        }
+        
         group.notify(queue: .main) {
             // Update history first
             self.updateCPUHistory(with: cpu)
@@ -472,6 +496,7 @@ class SystemMonitor: ObservableObject {
             self.systemInfo = systemInfo
             self.topProcesses = processes
             self.topMemoryProcesses = memoryProcesses
+            self.topNetworkProcesses = networkProcesses
             
             // Set this flag LAST to ensure all data is updated
             self.initialDataLoaded = true
@@ -642,19 +667,6 @@ class SystemMonitor: ObservableObject {
         
         return (bytesIn: 0, bytesOut: 0)
     }
-    
-    // Add debugging method to check interface status
-    private func debugInterfaceStats() {
-        guard hasBondedInterfaces else { return }
-        
-        print("🔍 Debugging bond interface stats:")
-        let interfaces = ["bond0", "en0", "en1"]
-        
-        for interface in interfaces {
-            let stats = getInterfaceStats(interface: interface)
-            print("🔍 \(interface): In=\(stats.bytesIn), Out=\(stats.bytesOut)")
-        }
-    }
 
     private func updateStats() {
         // Run updates on a background thread to avoid blocking the main thread
@@ -667,6 +679,7 @@ class SystemMonitor: ObservableObject {
             let network = self.getCurrentNetwork()
             let processes = self.getTopProcesses(count: Constants.processCountThreshold)
             let memoryProcesses = self.getTopMemoryProcesses(count: Constants.processCountThreshold)
+            let networkProcesses = self.getTopNetworkProcesses(count: Constants.processCountThreshold) // Add network processes
             let ups = self.getCurrentUPSInfo()
             let battery = self.getCurrentBatteryInfo()
             let systemInfo = self.getCurrentSystemInfo()
@@ -683,6 +696,7 @@ class SystemMonitor: ObservableObject {
                 self.networkUsage = network
                 self.topProcesses = processes
                 self.topMemoryProcesses = memoryProcesses
+                self.topNetworkProcesses = networkProcesses // Update network processes
                 self.upsInfo = ups
                 self.batteryInfo = battery
                 self.systemInfo = systemInfo
@@ -1094,6 +1108,127 @@ class SystemMonitor: ObservableObject {
         }
         
         return Array(parsedProcesses.prefix(count))
+    }
+    
+    // MARK: - Process Network Monitoring Methods
+    
+    private func getTopNetworkProcesses(count: Int) -> [ProcessNetworkInfo] {
+        return parseNettopOutput("NETTOP:" + getNettopData(), maxCount: count)
+    }
+    
+    private func getNettopData() -> String {
+        let possiblePaths = [
+            "/usr/bin/nettop",
+            "/usr/sbin/nettop",
+            "/bin/nettop",
+            "/usr/local/bin/nettop",
+            "/opt/homebrew/bin/nettop",
+            "/opt/local/bin/nettop"
+        ]
+        
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                print("🌐 Found nettop at: \(path)")
+                
+                let nettopArgs = ["-P", "-L", "1"]
+                print("🌐 Running: \(path) \(nettopArgs.joined(separator: " "))")
+                
+                if let output = executeCommand(path, nettopArgs) {
+                    if !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        print("🌐 nettop succeeded!")
+                        print("🌐 First 500 chars: \(String(output.prefix(500)))")
+                        return output
+                    } else {
+                        print("🌐 nettop returned empty output")
+                    }
+                } else {
+                    print("🌐 nettop execution failed")
+                }
+            }
+        }
+        
+        print("🌐 nettop not found in any standard location")
+        return ""
+    }
+    
+    private func parseNettopOutput(_ output: String, maxCount: Int) -> [ProcessNetworkInfo] {
+        let lines = output.split(separator: "\n")
+        var processNetworkInfos: [ProcessNetworkInfo] = []
+        
+        print("🌐 Parsing nettop CSV format with \(lines.count) lines")
+        
+        // Skip the header line (first line contains column names)
+        for (lineIndex, line) in lines.enumerated().dropFirst() {
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if trimmedLine.isEmpty { continue }
+            
+            if let processInfo = parseNettopCSVLine(String(trimmedLine), lineIndex: lineIndex) {
+                processNetworkInfos.append(processInfo)
+                print("🌐 Parsed: \(processInfo.name) (PID: \(processInfo.pid)) - In: \(processInfo.bytesIn), Out: \(processInfo.bytesOut)")
+            }
+        }
+        
+        print("🌐 Successfully parsed \(processNetworkInfos.count) processes from nettop CSV")
+        
+        // Filter out processes with zero network activity and sort by total usage
+        let activeProcesses = processNetworkInfos.filter { $0.totalUsage > 0 }
+        let sortedProcesses = activeProcesses.sorted { $0.totalUsage > $1.totalUsage }
+        
+        print("🌐 Found \(activeProcesses.count) processes with network activity")
+        
+        return Array(sortedProcesses.prefix(maxCount))
+    }
+    
+    private func parseNettopCSVLine(_ line: String, lineIndex: Int) -> ProcessNetworkInfo? {
+        // Split by comma for CSV format
+        let components = line.split(separator: ",").map { String($0) }
+        
+        // Expected format: time,process_name.PID,,,bytes_in,bytes_out,...
+        guard components.count >= 6 else {
+            print("🌐 Line \(lineIndex) has insufficient columns: \(components.count)")
+            return nil
+        }
+        
+        // Extract process name and PID from second column (format: "process_name.PID")
+        let processField = components[1]
+        guard !processField.isEmpty else {
+            print("🌐 Line \(lineIndex) has empty process field")
+            return nil
+        }
+        
+        // Parse process_name.PID format
+        var processName = processField
+        var pid: Int32 = 0
+        
+        if let lastDotIndex = processField.lastIndex(of: ".") {
+            let pidString = String(processField[processField.index(after: lastDotIndex)...])
+            if let pidValue = Int32(pidString) {
+                pid = pidValue
+                processName = String(processField[..<lastDotIndex])
+            }
+        }
+        
+        // Extract bytes_in (5th column, index 4) and bytes_out (6th column, index 5)
+        let bytesInString = components[4].trimmingCharacters(in: .whitespacesAndNewlines)
+        let bytesOutString = components[5].trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let bytesIn = Double(bytesInString) ?? 0.0
+        let bytesOut = Double(bytesOutString) ?? 0.0
+        
+        // Only create entry if we have a valid process name
+        guard !processName.isEmpty else {
+            return nil
+        }
+        
+        return ProcessNetworkInfo(
+            pid: pid,
+            name: processName,
+            bytesIn: bytesIn,
+            bytesOut: bytesOut,
+            connections: bytesIn > 0 || bytesOut > 0 ? 1 : 0,
+            state: "ACTIVE"
+        )
     }
     
     private func getCurrentSystemInfo() -> SystemInfo {
@@ -1812,15 +1947,18 @@ class SystemMonitor: ObservableObject {
     private func executeCommand(_ executablePath: String, _ arguments: [String]) -> String? {
         let task = Process()
         let pipe = Pipe()
+        let errorPipe = Pipe()
         
         task.executableURL = URL(fileURLWithPath: executablePath)
         task.arguments = arguments
         task.standardOutput = pipe
+        task.standardError = errorPipe
         
         do {
             #if DEBUG
-            // Uncomment next line only when debugging specific command issues
-            // print("Command Debug: Executing \(executablePath) with args: \(arguments)")
+            if executablePath.contains("nettop") || executablePath.contains("lsof") {
+                print("🔧 Debug: Executing \(executablePath) with args: \(arguments)")
+            }
             #endif
             
             try task.run()
@@ -1832,24 +1970,32 @@ class SystemMonitor: ObservableObject {
             }
             
             if task.isRunning {
-                print(" Command timeout: \(executablePath)")
+                print("⚠️ Command timeout: \(executablePath)")
                 task.terminate()
                 return nil
             }
             
-            guard task.terminationStatus == 0 else { 
-                // Only log failures, not successes
-                print(" Command failed: \(executablePath) (status: \(task.terminationStatus))")
-                return nil 
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            
+            if task.terminationStatus != 0 {
+                let errorOutput = String(data: errorData, encoding: .utf8) ?? "Unknown error"
+                print("❌ Command failed: \(executablePath) (status: \(task.terminationStatus))")
+                print("❌ Error output: \(errorOutput)")
+                return nil
             }
             
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
             let result = String(data: data, encoding: .utf8)
             
-            // Remove success logging - too verbose
+            #if DEBUG
+            if executablePath.contains("nettop") || executablePath.contains("lsof") {
+                print("✅ Command succeeded: \(executablePath), output length: \(result?.count ?? 0)")
+            }
+            #endif
+            
             return result
         } catch {
-            print(" Error executing \(executablePath): \(error)")
+            print("❌ Error executing \(executablePath): \(error)")
             return nil
         }
     }

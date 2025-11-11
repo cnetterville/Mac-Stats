@@ -13,7 +13,7 @@ struct MenuBarIconView: View {
     
     private let compactFont = Font.system(size: 9, weight: .regular, design: .monospaced)
     private let dataFont = Font.system(size: 11, weight: .regular, design: .monospaced)
-    private let networkFont = Font.system(size: 9, weight: .regular, design: .monospaced)
+    private let networkFont = Font.system(size: 10, weight: .regular, design: .monospaced)
     private let compactSpacing: CGFloat = -4 // Reduced from -3 to -4
     
     var body: some View {
@@ -159,12 +159,12 @@ struct MenuBarIconView: View {
         let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         
-        let speedWidth: CGFloat = 28 // Reduced from 30
-        let unitWidth: CGFloat = 30  // Reduced from 32
+        let speedWidth: CGFloat = 32
+        let unitWidth: CGFloat = 34
 
-        HStack(alignment: .center, spacing: -3) { // Keep spacing between network data and NIC label
+        HStack(alignment: .center, spacing: -3) {
             VStack(alignment: .leading, spacing: compactSpacing) {
-                HStack(spacing: 1) { // Reduced from 2 to 1
+                HStack(spacing: 1) {
                     Text(uploadFormatted.value)
                         .frame(width: speedWidth, alignment: .trailing)
                         .font(networkFont)
@@ -176,7 +176,7 @@ struct MenuBarIconView: View {
                         .font(networkFont)
                 }
                 
-                HStack(spacing: 1) { // Reduced from 2 to 1
+                HStack(spacing: 1) {
                     Text(downloadFormatted.value)
                         .frame(width: speedWidth, alignment: .trailing)
                         .font(networkFont)
@@ -189,8 +189,7 @@ struct MenuBarIconView: View {
                 }
             }
             
-            // NIC label - placed to the right of all network data
-            VStack(alignment: .center, spacing: -4) { // Changed from -1 to 0 for minimal letter spacing
+            VStack(alignment: .center, spacing: -4) {
                 Text("L")
                     .font(compactFont)
                     .fontWeight(.regular)
@@ -203,7 +202,7 @@ struct MenuBarIconView: View {
             }
             .fixedSize()
         }
-        .frame(width: 80) // Reduced from 80
+        .frame(width: 95)
         .monospacedDigit()
     }
 }

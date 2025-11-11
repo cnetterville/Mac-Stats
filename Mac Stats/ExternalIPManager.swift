@@ -21,6 +21,7 @@ class ExternalIPManager: ObservableObject {
     private var lastNotificationTime: Date?
     private var cancellables = Set<AnyCancellable>()
     private var preferences: PreferencesManager?
+    private var scheduledCheckTimer: Timer?
     
     private init() {
         // Load cached data if available
@@ -30,7 +31,62 @@ class ExternalIPManager: ObservableObject {
     }
     
     func setPreferences(_ preferences: PreferencesManager) {
+        // Clear existing subscriptions first to prevent cycles
+        cancellables.removeAll()
+        
         self.preferences = preferences
+        
+        // Set up observers for scheduled checking with debouncing to prevent cycles
+        preferences.$scheduledIPCheckEnabled
+            .removeDuplicates()
+            .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
+            .sink { [weak self] enabled in
+                DispatchQueue.main.async {
+                    self?.updateScheduledChecking(enabled: enabled)
+                }
+            }
+            .store(in: &cancellables)
+        
+        preferences.$scheduledIPCheckInterval
+            .removeDuplicates()
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self = self, let prefs = self.preferences else { return }
+                DispatchQueue.main.async {
+                    self.updateScheduledChecking(enabled: prefs.scheduledIPCheckEnabled)
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateScheduledChecking(enabled: Bool) {
+        // Always cancel existing timer first
+        scheduledCheckTimer?.invalidate()
+        scheduledCheckTimer = nil
+        
+        guard enabled, let preferences = preferences else { 
+            print("Scheduled IP checking disabled")
+            return 
+        }
+        
+        // Create new timer with the current interval
+        let interval = max(300.0, preferences.scheduledIPCheckInterval) // Minimum 5 minutes
+        scheduledCheckTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] timer in
+            guard let self = self, let prefs = self.preferences else {
+                timer.invalidate()
+                return
+            }
+            
+            // Only run if still enabled
+            guard prefs.scheduledIPCheckEnabled else {
+                timer.invalidate()
+                return
+            }
+            
+            self.refreshExternalIP()
+        }
+        
+        print("Scheduled IP checking enabled with interval \(interval) seconds")
     }
     
     func refreshExternalIP() {
@@ -265,6 +321,10 @@ class ExternalIPManager: ObservableObject {
     }
     
     // MARK: - Utility
+    
+    deinit {
+        scheduledCheckTimer?.invalidate()
+    }
     
     var flagEmoji: String {
         return getFlagEmoji(for: countryCode)

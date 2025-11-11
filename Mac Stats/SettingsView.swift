@@ -10,6 +10,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var systemMonitor: SystemMonitor
+    @EnvironmentObject var externalIPManager: ExternalIPManager
     
     @State private var isTestingEmail = false
     @State private var testResultMessage = ""
@@ -165,19 +166,56 @@ struct NetworkSettingsView: View {
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var systemMonitor: SystemMonitor
     
+    // Use local state instead of directly observing ExternalIPManager to avoid cycles
+    @State private var currentIP: String = ""
+    @State private var lastUpdated: Date?
+    @State private var isRefreshing: Bool = false
+    
     var body: some View {
         Form {
-            Section("Network Interface") {
-                Picker("Interface", selection: $preferences.selectedNetworkInterface) {
-                    Text("All Interfaces").tag("All")
-                    ForEach(systemMonitor.networkInterfaces, id: \.self) { interface in
-                        Text(interface).tag(interface)
+            Section("Monitoring Mode") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Network Monitoring")
+                        .font(.headline)
+                    
+                    Picker("Network Monitoring", selection: $preferences.networkMonitoringMode) {
+                        Text("Interface-based").tag(NetworkMonitoringMode.interface)
+                        Text("Process-based").tag(NetworkMonitoringMode.process)
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    Text(preferences.networkMonitoringMode.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                
+                if preferences.networkMonitoringMode == .process {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.blue)
+                            .font(.caption)
+                        Text("Process monitoring may require elevated permissions for detailed data.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Spacer()
                     }
                 }
-                .pickerStyle(.menu)
-                
-                Button("Refresh Interfaces") {
-                    systemMonitor.refreshNetworkInterfaces()
+            }
+            
+            if preferences.networkMonitoringMode == .interface {
+                Section("Network Interface") {
+                    Picker("Interface", selection: $preferences.selectedNetworkInterface) {
+                        Text("All Interfaces").tag("All")
+                        ForEach(systemMonitor.networkInterfaces, id: \.self) { interface in
+                            Text(interface).tag(interface)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    
+                    Button("Refresh Interfaces") {
+                        systemMonitor.refreshNetworkInterfaces()
+                    }
                 }
             }
             
@@ -191,23 +229,165 @@ struct NetworkSettingsView: View {
                 Toggle("Auto Scale Units", isOn: $preferences.autoScaleNetwork)
             }
             
-            Section("IP Change Monitoring") {
+            Section("Notification Settings") {
                 Toggle("Enable IP Change Notifications", isOn: $preferences.ipChangeNotificationEnabled)
                 
                 if preferences.ipChangeNotificationEnabled {
-                    HStack {
-                        Text("Check Interval")
-                        Spacer()
-                        Text("\(Int(preferences.ipChangeNotificationInterval)) seconds")
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Notification Throttle")
+                            Spacer()
+                            Text(formatNotificationInterval(preferences.ipChangeNotificationInterval))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Slider(value: $preferences.ipChangeNotificationInterval, in: 60...3600, step: 60) {
+                            Text("Notification Interval")
+                        } minimumValueLabel: {
+                            Text("1m")
+                                .font(.caption2)
+                        } maximumValueLabel: {
+                            Text("60m")
+                                .font(.caption2)
+                        }
+                        .disabled(!preferences.ipChangeNotificationEnabled)
+                        
+                        Text("Minimum time between notifications to prevent spam")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
+                }
+            }
+            
+            Section("Scheduled IP Checking") {
+                Toggle("Enable Scheduled IP Checks", isOn: $preferences.scheduledIPCheckEnabled)
+                
+                if preferences.scheduledIPCheckEnabled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Check Every")
+                            Spacer()
+                            Text(formatTimeInterval(preferences.scheduledIPCheckInterval))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Slider(value: $preferences.scheduledIPCheckInterval, in: 300...7200, step: 300) {
+                            Text("Check Interval")
+                        } minimumValueLabel: {
+                            Text("5m")
+                                .font(.caption2)
+                        } maximumValueLabel: {
+                            Text("2h")
+                                .font(.caption2)
+                        }
+                        
+                        Text("Automatically checks for IP changes at the specified interval")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                
+                if preferences.scheduledIPCheckEnabled && !preferences.ipChangeNotificationEnabled {
+                    Text("⚠️ Enable IP Change Notifications above to receive alerts when changes are detected")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                        .padding(.top, 4)
+                }
+            }
+            
+            Section("Manual IP Refresh") {
+                HStack {
+                    Button("Refresh IP Now") {
+                        refreshIPManually()
+                    }
+                    .disabled(isRefreshing)
                     
-                    Slider(value: $preferences.ipChangeNotificationInterval, in: 60...3600, step: 60)
-                        .disabled(!preferences.ipChangeNotificationEnabled)
+                    if isRefreshing {
+                        ProgressView()
+                            .scaleEffect(0.5)
+                            .frame(width: 20, height: 20)
+                    }
+                }
+                
+                if !currentIP.isEmpty {
+                    HStack {
+                        Text("Current IP:")
+                        Spacer()
+                        Text(currentIP)
+                            .foregroundColor(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                
+                if let lastUpdated = lastUpdated {
+                    HStack {
+                        Text("Last Updated:")
+                        Spacer()
+                        Text(lastUpdated.formatted(date: .omitted, time: .shortened))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
         }
         .formStyle(.grouped)
+        .onAppear {
+            updateLocalState()
+        }
+    }
+    
+    private func updateLocalState() {
+        let manager = ExternalIPManager.shared
+        currentIP = manager.externalIP
+        lastUpdated = manager.lastUpdated
+        isRefreshing = manager.isLoading
+    }
+    
+    private func refreshIPManually() {
+        isRefreshing = true
+        
+        ExternalIPManager.shared.refreshExternalIP()
+        
+        // Update state after a brief delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            updateLocalState()
+        }
+        
+        // Stop loading indicator after reasonable timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            isRefreshing = false
+            updateLocalState()
+        }
+    }
+    
+    private func formatTimeInterval(_ interval: Double) -> String {
+        let minutes = Int(interval) / 60
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        
+        if hours > 0 {
+            if remainingMinutes > 0 {
+                return "\(hours)h \(remainingMinutes)m"
+            } else {
+                return "\(hours)h"
+            }
+        } else {
+            return "\(minutes)m"
+        }
+    }
+    
+    private func formatNotificationInterval(_ interval: Double) -> String {
+        let minutes = Int(interval) / 60
+        let seconds = Int(interval) % 60
+        
+        if minutes > 0 {
+            if seconds > 0 {
+                return "\(minutes)m \(seconds)s"
+            } else {
+                return "\(minutes)m"
+            }
+        } else {
+            return "\(seconds)s"
+        }
     }
 }
 

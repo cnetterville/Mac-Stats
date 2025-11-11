@@ -605,191 +605,452 @@ struct CardBasedStatsView: View {
     private func networkCard() -> some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
-                EnhancedCardHeaderView(title: "Network Activity", icon: "network", color: .green)
+                HStack {
+                    EnhancedCardHeaderView(title: "Network Activity", icon: "network", color: .green)
+                    Spacer()
+                    Text(preferences.networkMonitoringMode.name)
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                        .glassTextVibrancy()
+                }
                 
-                VStack(alignment: .leading, spacing: 8) {
-                    let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
-                    let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                    let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                    
-                    // Current speeds with enhanced display
+                if preferences.networkMonitoringMode == .interface {
+                    interfaceNetworkContent()
+                } else {
+                    processNetworkContent()
+                }
+            }
+        }
+    }
+    
+    private func interfaceNetworkContent() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
+            let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+            let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+            
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .foregroundColor(.red)
-                                    .font(.subheadline)
-                                    .glassTextVibrancy()
-                                Text("Upload")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                    .glassTextVibrancy()
-                            }
-                            
-                            HStack {
-                                Text("\(uploadFormatted.value) \(uploadFormatted.unit)")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .monospacedDigit()
-                                    .foregroundColor(.red)
-                                    .glassTextVibrancy()
-                                
-                                Spacer()
-                                
-                                // Upload sparkline
-                                if !systemMonitor.uploadHistory.isEmpty {
-                                    GlassSparklineView(
-                                        data: systemMonitor.uploadHistory.map { $0 / 1000 }, // Convert to KB for better scale
-                                        lineColor: .red,
-                                        lineWidth: 1.5
-                                    )
-                                    .frame(width: 60, height: 25)
-                                }
-                            }
+                        Image(systemName: "arrow.up.circle.fill")
+                            .foregroundColor(.red)
+                            .font(.subheadline)
+                            .glassTextVibrancy()
+                        Text("Upload")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                    }
+                    
+                    HStack {
+                        Text("\(uploadFormatted.value) \(uploadFormatted.unit)")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                            .foregroundColor(.red)
+                            .glassTextVibrancy()
+                        
+                        Spacer()
+                        
+                        if !systemMonitor.uploadHistory.isEmpty {
+                            GlassSparklineView(
+                                data: systemMonitor.uploadHistory.map { $0 / 1000 },
+                                lineColor: .red,
+                                lineWidth: 1.5
+                            )
+                            .frame(width: 60, height: 25)
                         }
+                    }
+                }
+                
+                Divider()
+                    .opacity(0.5)
+                    .frame(height: 50)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.subheadline)
+                            .glassTextVibrancy()
+                        Text("Download")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                    }
+                    
+                    HStack {
+                        Text("\(downloadFormatted.value) \(downloadFormatted.unit)")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                            .foregroundColor(.blue)
+                            .glassTextVibrancy()
                         
-                        Divider()
-                            .opacity(0.5)
-                            .frame(height: 50)
+                        Spacer()
                         
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .foregroundColor(.blue)
-                                    .font(.subheadline)
-                                    .glassTextVibrancy()
-                                Text("Download")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                        if !systemMonitor.downloadHistory.isEmpty {
+                            GlassSparklineView(
+                                data: systemMonitor.downloadHistory.map { $0 / 1000 },
+                                lineColor: .blue,
+                                lineWidth: 1.5
+                            )
+                            .frame(width: 60, height: 25)
+                        }
+                    }
+                }
+            }
+            
+            if !systemMonitor.uploadHistory.isEmpty || !systemMonitor.downloadHistory.isEmpty {
+                Divider()
+                    .opacity(0.5)
+                
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Peak Speeds")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                        
+                        HStack {
+                            if let maxUpload = systemMonitor.uploadHistory.max() {
+                                let maxUploadFormatted = NetworkFormatter.formatNetworkValue(maxUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                                Text("↑ \(maxUploadFormatted.value) \(maxUploadFormatted.unit)")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.red)
                                     .glassTextVibrancy()
                             }
                             
-                            HStack {
-                                Text("\(downloadFormatted.value) \(downloadFormatted.unit)")
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
+                            if let maxDownload = systemMonitor.downloadHistory.max() {
+                                let maxDownloadFormatted = NetworkFormatter.formatNetworkValue(maxDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                                Text("↓ \(maxDownloadFormatted.value) \(maxDownloadFormatted.unit)")
+                                    .font(.caption)
                                     .monospacedDigit()
                                     .foregroundColor(.blue)
                                     .glassTextVibrancy()
-                                
-                                Spacer()
-                                
-                                // Download sparkline
-                                if !systemMonitor.downloadHistory.isEmpty {
-                                    GlassSparklineView(
-                                        data: systemMonitor.downloadHistory.map { $0 / 1000 }, // Convert to KB for better scale
-                                        lineColor: .blue,
-                                        lineWidth: 1.5
-                                    )
-                                    .frame(width: 60, height: 25)
-                                }
                             }
                         }
                     }
                     
-                    // Peak speeds
-                    if !systemMonitor.uploadHistory.isEmpty || !systemMonitor.downloadHistory.isEmpty {
-                        Divider()
-                            .opacity(0.5)
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("Average")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
                         
                         HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Peak Speeds")
+                            if !systemMonitor.uploadHistory.isEmpty {
+                                let avgUpload = systemMonitor.uploadHistory.reduce(0, +) / Double(systemMonitor.uploadHistory.count)
+                                let avgUploadFormatted = NetworkFormatter.formatNetworkValue(avgUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                                Text("↑ \(avgUploadFormatted.value) \(avgUploadFormatted.unit)")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                                    .foregroundColor(.red)
                                     .glassTextVibrancy()
-                                
-                                HStack {
-                                    if let maxUpload = systemMonitor.uploadHistory.max() {
-                                        let maxUploadFormatted = NetworkFormatter.formatNetworkValue(maxUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↑ \(maxUploadFormatted.value) \(maxUploadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.red)
-                                            .glassTextVibrancy()
-                                    }
-                                    
-                                    if let maxDownload = systemMonitor.downloadHistory.max() {
-                                        let maxDownloadFormatted = NetworkFormatter.formatNetworkValue(maxDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↓ \(maxDownloadFormatted.value) \(maxDownloadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.blue)
-                                            .glassTextVibrancy()
-                                    }
-                                }
                             }
                             
-                            Spacer()
-                            
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("Average")
+                            if !systemMonitor.downloadHistory.isEmpty {
+                                let avgDownload = systemMonitor.downloadHistory.reduce(0, +) / Double(systemMonitor.downloadHistory.count)
+                                let avgDownloadFormatted = NetworkFormatter.formatNetworkValue(avgDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                                Text("↓ \(avgDownloadFormatted.value) \(avgDownloadFormatted.unit)")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    .monospacedDigit()
+                                    .foregroundColor(.blue)
                                     .glassTextVibrancy()
-                                
-                                HStack {
-                                    if !systemMonitor.uploadHistory.isEmpty {
-                                        let avgUpload = systemMonitor.uploadHistory.reduce(0, +) / Double(systemMonitor.uploadHistory.count)
-                                        let avgUploadFormatted = NetworkFormatter.formatNetworkValue(avgUpload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↑ \(avgUploadFormatted.value) \(avgUploadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.red)
-                                            .glassTextVibrancy()
-                                    }
-                                    
-                                    if !systemMonitor.downloadHistory.isEmpty {
-                                        let avgDownload = systemMonitor.downloadHistory.reduce(0, +) / Double(systemMonitor.downloadHistory.count)
-                                        let avgDownloadFormatted = NetworkFormatter.formatNetworkValue(avgDownload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-                                        Text("↓ \(avgDownloadFormatted.value) \(avgDownloadFormatted.unit)")
-                                            .font(.caption)
-                                            .monospacedDigit()
-                                            .foregroundColor(.blue)
-                                            .glassTextVibrancy()
-                                    }
-                                }
                             }
                         }
                     }
-                    
-                    // External IP with enhanced info
-                    if !externalIPManager.externalIP.isEmpty {
-                        Divider()
-                            .opacity(0.5)
-                        HStack {
-                            Image(systemName: "globe")
-                                .foregroundColor(.green)
+                }
+            }
+            
+            if preferences.selectedNetworkInterface != "All" && preferences.selectedNetworkInterface != "Combined" {
+                Divider()
+                    .opacity(0.5)
+                
+                HStack {
+                    Image(systemName: "network.badge.shield.half.filled")
+                        .foregroundColor(.green)
+                        .font(.caption)
+                        .glassTextVibrancy()
+                    Text("Interface: \(preferences.selectedNetworkInterface)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .glassTextVibrancy()
+                    Spacer()
+                }
+            }
+            
+            if !externalIPManager.externalIP.isEmpty {
+                Divider()
+                    .opacity(0.5)
+                HStack {
+                    Image(systemName: "globe")
+                        .foregroundColor(.green)
+                        .font(.subheadline)
+                        .glassTextVibrancy()
+                    Text("External IP")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .glassTextVibrancy()
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Text(externalIPManager.flagEmoji)
+                            .font(.title3)
+                            .glassTextVibrancy()
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(externalIPManager.externalIP)
                                 .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
                                 .glassTextVibrancy()
-                            Text("External IP")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .glassTextVibrancy()
-                            Spacer()
-                            HStack(spacing: 6) {
-                                Text(externalIPManager.flagEmoji)
-                                    .font(.title3)
+                            if !externalIPManager.countryName.isEmpty {
+                                Text(externalIPManager.countryName)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
                                     .glassTextVibrancy()
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text(externalIPManager.externalIP)
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .monospacedDigit()
-                                        .glassTextVibrancy()
-                                    if !externalIPManager.countryName.isEmpty {
-                                        Text(externalIPManager.countryName)
-                                            .font(.caption2)
-                                            .foregroundColor(.secondary)
-                                            .glassTextVibrancy()
-                                    }
-                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+    
+    private func processNetworkContent() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if systemMonitor.topNetworkProcesses.isEmpty {
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: "info.circle")
+                            .foregroundColor(.blue)
+                            .font(.subheadline)
+                            .glassTextVibrancy()
+                        Text("Process Network Monitoring")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                        Spacer()
+                    }
+                    
+                    Text("No network processes detected. This can happen for several reasons:")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .glassTextVibrancy()
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("•")
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                            Text("nettop requires elevated privileges for detailed traffic data")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                        }
+                        
+                        HStack {
+                            Text("•")
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                            Text("No active network connections at the moment")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                        }
+                        
+                        HStack {
+                            Text("•")
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                            Text("System security restrictions")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                        }
+                    }
+                    
+                    Divider()
+                        .opacity(0.5)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("💡 To enable detailed process monitoring:")
+                            .font(.caption)
+                            .fontWeight(.medium)
+                            .foregroundColor(.blue)
+                            .glassTextVibrancy()
+                        
+                        Text("Try running: sudo nettop -P -L 1 in Terminal to see if it works with elevated privileges")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 16)
+                            .glassTextVibrancy()
+                    }
+                }
+            } else {
+                // Top Network Processes
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "list.bullet")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                            .glassTextVibrancy()
+                        Text("Top Network Processes")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                        Spacer()
+                        
+                        Text("\(systemMonitor.topNetworkProcesses.count) active")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .opacity(0.7)
+                            .glassTextVibrancy()
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(systemMonitor.topNetworkProcesses.prefix(5)) { processInfo in
+                            networkProcessRowView(processInfo: processInfo)
+                        }
+                    }
+                }
+                
+                // Total network activity summary
+                let totalBytesIn = systemMonitor.topNetworkProcesses.reduce(0) { $0 + $1.bytesIn }
+                let totalBytesOut = systemMonitor.topNetworkProcesses.reduce(0) { $0 + $1.bytesOut }
+                
+                if totalBytesIn > 0 || totalBytesOut > 0 {
+                    Divider()
+                        .opacity(0.5)
+                    
+                    let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
+                    let totalUploadFormatted = NetworkFormatter.formatNetworkValue(totalBytesOut, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                    let totalDownloadFormatted = NetworkFormatter.formatNetworkValue(totalBytesIn, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                    
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Total Activity")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                            
+                            HStack {
+                                Text("↑ \(totalUploadFormatted.value) \(totalUploadFormatted.unit)")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.red)
+                                    .glassTextVibrancy()
+                                
+                                Text("↓ \(totalDownloadFormatted.value) \(totalDownloadFormatted.unit)")
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.blue)
+                                    .glassTextVibrancy()
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Connections")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                            
+                            let totalConnections = systemMonitor.topNetworkProcesses.reduce(0) { $0 + $1.connections }
+                            Text("\(totalConnections)")
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundColor(.green)
+                                .glassTextVibrancy()
+                        }
+                    }
+                } else {
+                    // Show connection-only data
+                    Divider()
+                        .opacity(0.5)
+                    
+                    HStack {
+                        Image(systemName: "wifi.circle")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                            .glassTextVibrancy()
+                        Text("Showing active connections only (no traffic data available)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                        Spacer()
+                    }
+                }
+            }
+        }
+    }
+    
+    private func networkProcessRowView(processInfo: ProcessNetworkInfo) -> some View {
+        HStack {
+            HStack(spacing: 6) {
+                Image(systemName: getProcessIcon(for: processInfo.name))
+                    .foregroundColor(getProcessIconColor(for: processInfo.name))
+                    .font(.caption)
+                    .frame(width: 12)
+                    .glassTextVibrancy()
+                
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(processInfo.name)
+                        .font(.caption)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .glassTextVibrancy()
+                    
+                    if processInfo.connections > 1 {
+                        Text("\(processInfo.connections) connections")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .glassTextVibrancy()
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            if processInfo.bytesIn > 0 || processInfo.bytesOut > 0 {
+                let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
+                let uploadFormatted = NetworkFormatter.formatNetworkValue(processInfo.bytesOut, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                let downloadFormatted = NetworkFormatter.formatNetworkValue(processInfo.bytesIn, unitType: unitType, autoScale: preferences.autoScaleNetwork)
+                
+                VStack(alignment: .trailing, spacing: 1) {
+                    if processInfo.bytesOut > 0 {
+                        Text("↑ \(uploadFormatted.value) \(uploadFormatted.unit)")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundColor(.red)
+                            .glassTextVibrancy()
+                    }
+                    
+                    if processInfo.bytesIn > 0 {
+                        Text("↓ \(downloadFormatted.value) \(downloadFormatted.unit)")
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundColor(.blue)
+                            .glassTextVibrancy()
+                    }
+                }
+            } else {
+                Text("Active")
+                    .font(.caption2)
+                    .foregroundColor(.green)
+                    .glassTextVibrancy()
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .liquidGlass(material: .ultraThin, cornerRadius: 6, shadowRadius: 2, shadowOpacity: 0.1)
     }
     
     private func diskCard() -> some View {
@@ -959,7 +1220,6 @@ struct CardBasedStatsView: View {
                 
                 VStack(alignment: .leading, spacing: 12) {
                     if systemMonitor.upsInfo.present && systemMonitor.upsInfo.chargeLevel > 0 {
-                        // Full UPS info available
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text("Charge Level")
@@ -1004,7 +1264,6 @@ struct CardBasedStatsView: View {
                                 .glassTextVibrancy()
                         }
                     } else {
-                        // Basic power source info
                         InfoRowView(label: "Power Source", value: systemMonitor.upsInfo.powerSource.isEmpty ? "AC Power" : systemMonitor.upsInfo.powerSource, 
                                    valueColor: getPowerSourceColor(for: systemMonitor.upsInfo.powerSource))
                         
@@ -1028,7 +1287,6 @@ struct CardBasedStatsView: View {
                 
                 VStack(alignment: .leading, spacing: 8) {
                     if wifiManager.wifiInfo.isConnected {
-                        // Connected WiFi info
                         HStack {
                             Text("Network")
                                 .font(.subheadline)
@@ -1063,7 +1321,6 @@ struct CardBasedStatsView: View {
                             }
                         }
                         
-                        // Signal strength progress bar
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text("Signal Quality")
@@ -1093,7 +1350,6 @@ struct CardBasedStatsView: View {
                         )
                         
                     } else if !wifiManager.wifiInfo.hasPermission {
-                        // Permission required
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Image(systemName: "exclamationmark.triangle.fill")
@@ -1123,7 +1379,6 @@ struct CardBasedStatsView: View {
                         }
                         
                     } else {
-                        // Not connected
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
                                 Image(systemName: "wifi.slash")
@@ -1144,7 +1399,6 @@ struct CardBasedStatsView: View {
                         }
                     }
                     
-                    // Refresh button and status
                     Divider()
                         .opacity(0.5)
                     
@@ -1175,12 +1429,9 @@ struct CardBasedStatsView: View {
         }
     }
     
-    // MARK: - Enhanced Helper Views with Glass Effects
-    
     private func enhancedGlassProcessRowView(process: SystemProcessInfo, isCPUView: Bool) -> some View {
         HStack {
             HStack(spacing: 6) {
-                // Process type indicator
                 Image(systemName: getProcessIcon(for: process.name))
                     .foregroundColor(getProcessIconColor(for: process.name))
                     .font(.caption)
@@ -1196,7 +1447,6 @@ struct CardBasedStatsView: View {
             
             Spacer()
             
-            // Main value
             Text(processValueText(process: process, isCPUView: isCPUView))
                 .font(.caption)
                 .fontWeight(.semibold)
@@ -1210,8 +1460,6 @@ struct CardBasedStatsView: View {
         .padding(.vertical, 4)
         .liquidGlass(material: .ultraThin, cornerRadius: 6, shadowRadius: 2, shadowOpacity: 0.1)
     }
-    
-    // MARK: - Helper Functions
     
     private func getWiFiCardColor() -> Color {
         if wifiManager.wifiInfo.isConnected {
@@ -1487,7 +1735,7 @@ struct CardBasedStatsView: View {
     }
     
     private func fanSpeedColor(for rpm: Double) -> Color {
-        let percentage = (rpm / 6000.0) * 100 // Assuming max 6000 RPM
+        let percentage = (rpm / 6000.0) * 100
         switch percentage {
         case 0..<30:
             return .green
