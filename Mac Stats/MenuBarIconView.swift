@@ -14,7 +14,7 @@ struct MenuBarIconView: View {
     private let compactFont = Font.system(size: 9, weight: .regular, design: .monospaced)
     private let dataFont = Font.system(size: 11, weight: .regular, design: .monospaced)
     private let networkFont = Font.system(size: 10, weight: .regular, design: .monospaced)
-    private let compactSpacing: CGFloat = -4 // Reduced from -3 to -4
+    private let compactSpacing: CGFloat = -3 // Reduced from -4 to -3
     
     var body: some View {
         Group {
