@@ -1370,7 +1370,7 @@ class SystemMonitor: ObservableObject {
         if let cached = cachedSystemInfo,
            now.timeIntervalSince(lastSystemInfoUpdate) < Constants.systemInfoCacheInterval {
             // Still update uptime since that changes
-            var updated = cached
+            _ = cached
             let uptimeInfo = getUptimeInfo()
             return SystemInfo(
                 modelName: cached.modelName,
