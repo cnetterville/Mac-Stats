@@ -103,8 +103,8 @@ class PreferencesManager: ObservableObject {
     @Published var showMenuBarDisk: Bool = false
     @Published var showMenuBarNetwork: Bool = false
     @Published var showMenuBarUptime: Bool = false
-    @Published var updateInterval: TimeInterval = 2.0
-    @Published var powerUpdateInterval: TimeInterval = 30.0
+    @Published var updateInterval: TimeInterval = 3.0  // Increased from 2 to 3 seconds for menubar app
+    @Published var powerUpdateInterval: TimeInterval = 60.0  // Increased from 30 to 60 seconds - reduces macmon calls
     @Published var launchAtStartup: Bool = false
     @Published var selectedNetworkInterface: String = "All"
     @Published var networkUnit: NetworkUnit = .bytes
@@ -235,8 +235,8 @@ class PreferencesManager: ObservableObject {
         showMenuBarDisk = UserDefaults.standard.object(forKey: Keys.showMenuBarDisk.rawValue) as? Bool ?? false
         showMenuBarNetwork = UserDefaults.standard.object(forKey: Keys.showMenuBarNetwork.rawValue) as? Bool ?? false
         showMenuBarUptime = UserDefaults.standard.object(forKey: Keys.showMenuBarUptime.rawValue) as? Bool ?? false
-        updateInterval = UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) : 2.0
-        powerUpdateInterval = UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) : 30.0
+        updateInterval = UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) : 3.0  // Default 3 seconds
+        powerUpdateInterval = UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) : 60.0  // Default 60 seconds
         launchAtStartup = UserDefaults.standard.bool(forKey: Keys.launchAtStartup.rawValue)
         selectedNetworkInterface = UserDefaults.standard.string(forKey: Keys.selectedNetworkInterface.rawValue) ?? "All"
         networkUnit = NetworkUnit(rawValue: UserDefaults.standard.integer(forKey: Keys.networkUnit.rawValue)) ?? .bytes

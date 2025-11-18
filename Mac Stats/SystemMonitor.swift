@@ -262,6 +262,10 @@ class SystemMonitor: ObservableObject {
         static let preferredWiFiInterface = "en2"
         static let systemInfoCacheInterval: TimeInterval = 300.0
         static let networkProcessUpdateInterval: TimeInterval = 5.0
+        
+        // Add caching to prevent excessive macmon calls
+        static let powerConsumptionCacheInterval: TimeInterval = 15.0 // Cache power data for 15 seconds minimum
+        static let macmonCallTimeout: TimeInterval = 3.0 // Reduce timeout for faster failure
     }
     
     // MARK: - Published Properties
@@ -303,6 +307,11 @@ class SystemMonitor: ObservableObject {
     private var networkProcessUpdateCounter: Int = 0
     private var cachedNetworkProcesses: [ProcessNetworkInfo] = []
     private var networkProcessTimer: Timer?
+    
+    // Add caching for power consumption to reduce macmon calls
+    private var cachedPowerConsumption: PowerConsumptionInfo?
+    private var lastPowerConsumptionUpdate: Date = Date.distantPast
+    private var isFetchingPowerConsumption: Bool = false
     weak var preferences: PreferencesManager? {
         didSet {
             // Update intervals when preferences are set
@@ -1617,6 +1626,21 @@ class SystemMonitor: ObservableObject {
     }
     
     private func getCurrentPowerConsumption() -> PowerConsumptionInfo {
+        // Check cache first to avoid excessive macmon calls
+        let now = Date()
+        if let cached = cachedPowerConsumption,
+           now.timeIntervalSince(lastPowerConsumptionUpdate) < Constants.powerConsumptionCacheInterval {
+            return cached
+        }
+        
+        // Prevent concurrent macmon executions
+        guard !isFetchingPowerConsumption else {
+            return cachedPowerConsumption ?? estimatePowerConsumption()
+        }
+        
+        isFetchingPowerConsumption = true
+        defer { isFetchingPowerConsumption = false }
+        
         // Try macmon first
         var basePowerInfo: PowerConsumptionInfo
         
@@ -1629,8 +1653,8 @@ class SystemMonitor: ObservableObject {
         // Get power adapter info with current system power
         let adapterInfo = getCurrentPowerAdapterInfo(systemPower: basePowerInfo.totalSystemPower)
         
-        // Return updated power info with adapter data
-        return PowerConsumptionInfo(
+        // Create updated power info with adapter data
+        let powerInfo = PowerConsumptionInfo(
             cpuPower: basePowerInfo.cpuPower,
             gpuPower: basePowerInfo.gpuPower,
             totalSystemPower: basePowerInfo.totalSystemPower,
@@ -1638,6 +1662,12 @@ class SystemMonitor: ObservableObject {
             isEstimate: basePowerInfo.isEstimate,
             adapterInfo: adapterInfo
         )
+        
+        // Cache the result
+        cachedPowerConsumption = powerInfo
+        lastPowerConsumptionUpdate = now
+        
+        return powerInfo
     }
     
     // Updated method to detect power adapter information
@@ -1855,8 +1885,8 @@ class SystemMonitor: ObservableObject {
         for path in macmonPaths {
             guard FileManager.default.fileExists(atPath: path) else { continue }
             
-            // Use the enhanced executeCommand with timeout
-            if let output = executeCommand(path, ["pipe", "-s", "1"]) {
+            // Use the enhanced executeCommand with reduced timeout for faster failure
+            if let output = executeCommandWithTimeout(path, ["pipe", "-s", "1"], timeout: Constants.macmonCallTimeout) {
                 return parseMacmonJSONOutput(output)
             }
         }
@@ -2097,6 +2127,45 @@ class SystemMonitor: ObservableObject {
             return result
         } catch {
             print(" Error executing \(executablePath): \(error)")
+            return nil
+        }
+    }
+    
+    // New method specifically for macmon with shorter timeout
+    private func executeCommandWithTimeout(_ executablePath: String, _ arguments: [String], timeout: TimeInterval) -> String? {
+        let task = Process()
+        let pipe = Pipe()
+        let errorPipe = Pipe()
+        
+        task.executableURL = URL(fileURLWithPath: executablePath)
+        task.arguments = arguments
+        task.standardOutput = pipe
+        task.standardError = errorPipe
+        
+        do {
+            try task.run()
+            
+            // Use custom timeout
+            let timeoutDate = Date().addingTimeInterval(timeout)
+            while task.isRunning && Date() < timeoutDate {
+                Thread.sleep(forTimeInterval: 0.05) // Check more frequently for faster response
+            }
+            
+            if task.isRunning {
+                print(" ⚠️ macmon timeout after \(timeout)s")
+                task.terminate()
+                return nil
+            }
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            
+            if task.terminationStatus != 0 {
+                return nil
+            }
+            
+            return String(data: data, encoding: .utf8)
+        } catch {
+            print(" Error executing macmon: \(error)")
             return nil
         }
     }

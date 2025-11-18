@@ -14,6 +14,7 @@ class ExternalIPManager: ObservableObject {
     @Published var externalIP: String = ""
     @Published var countryCode: String = ""
     @Published var countryName: String = ""
+    @Published var ispName: String = ""
     @Published var isLoading: Bool = false
     @Published var lastUpdated: Date?
     
@@ -120,16 +121,17 @@ class ExternalIPManager: ObservableObject {
                     self.sendIPChangeNotificationIfNeeded()
                 }
                 
-                // Fetch country information for the IP
-                self.fetchCountryInfoFromFallback(for: ip) { countryCode, countryName, error in
+                // Fetch country and ISP information for the IP
+                self.fetchIPInfo(for: ip) { countryCode, countryName, ispName, error in
                     DispatchQueue.main.async {
                         if let error = error {
-                            print("Error fetching country info: \(error)")
+                            print("Error fetching IP info: \(error)")
                             return
                         }
                         
                         self.countryCode = countryCode ?? ""
                         self.countryName = countryName ?? ""
+                        self.ispName = ispName ?? ""
                         
                         // Cache all data
                         self.cacheData()
@@ -251,16 +253,16 @@ class ExternalIPManager: ObservableObject {
         }.resume()
     }
     
-    private func fetchCountryInfoFromFallback(for ip: String, completion: @escaping (String?, String?, Error?) -> Void) {
+    private func fetchIPInfo(for ip: String, completion: @escaping (String?, String?, String?, Error?) -> Void) {
         guard !ip.isEmpty else {
-            completion(nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty IP address"]))
+            completion(nil, nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Empty IP address"]))
             return
         }
         
         // Using ipinfo.io as the primary service (requires HTTPS)
         let urlString = "https://ipinfo.io/\(ip)/json"
         guard let url = URL(string: urlString) else {
-            completion(nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
+            completion(nil, nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"]))
             return
         }
         
@@ -269,31 +271,34 @@ class ExternalIPManager: ObservableObject {
         
         URLSession.shared.dataTask(with: request) { data, response, error in
             if let error = error {
-                completion(nil, nil, error)
+                completion(nil, nil, nil, error)
                 return
             }
             
             guard let data = data else {
-                completion(nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"]))
+                completion(nil, nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data received"]))
                 return
             }
             
             do {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     // ipinfo.io returns country directly as a 2-letter code
-                    if let countryCode = json["country"] as? String {
-                        // Try to get country name, fallback to country code if not available
-                        let countryName = json["country_name"] as? String ?? 
-                                        (json["country"] as? String ?? "")
-                        completion(countryCode, countryName, nil)
+                    let countryCode = json["country"] as? String
+                    // Try to get country name, fallback to country code if not available
+                    let countryName = json["country_name"] as? String ?? countryCode ?? ""
+                    // Get ISP/organization name
+                    let ispName = json["org"] as? String ?? ""
+                    
+                    if countryCode != nil || !ispName.isEmpty {
+                        completion(countryCode, countryName, ispName, nil)
                     } else {
-                        completion(nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Country not found in response"]))
+                        completion(nil, nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "No IP info found in response"]))
                     }
                 } else {
-                    completion(nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"]))
+                    completion(nil, nil, nil, NSError(domain: "ExternalIPManager", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON response"]))
                 }
             } catch {
-                completion(nil, nil, error)
+                completion(nil, nil, nil, error)
             }
         }.resume()
     }
@@ -305,6 +310,7 @@ class ExternalIPManager: ObservableObject {
         defaults.set(externalIP, forKey: "cachedExternalIP")
         defaults.set(countryCode, forKey: "cachedCountryCode")
         defaults.set(countryName, forKey: "cachedCountryName")
+        defaults.set(ispName, forKey: "cachedISPName")
         defaults.set(lastUpdated?.timeIntervalSince1970, forKey: "cachedExternalIPLastUpdated")
     }
     
@@ -313,6 +319,7 @@ class ExternalIPManager: ObservableObject {
         externalIP = defaults.string(forKey: "cachedExternalIP") ?? ""
         countryCode = defaults.string(forKey: "cachedCountryCode") ?? ""
         countryName = defaults.string(forKey: "cachedCountryName") ?? ""
+        ispName = defaults.string(forKey: "cachedISPName") ?? ""
         
         let timestamp = defaults.double(forKey: "cachedExternalIPLastUpdated")
         if timestamp != 0 {

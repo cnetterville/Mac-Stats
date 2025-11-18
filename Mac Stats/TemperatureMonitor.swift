@@ -15,7 +15,10 @@ class TemperatureMonitor {
     // Cache for temperature data and sensor availability
     private static var lastTemperature: Double = 0.0
     private static var lastTemperatureTime: Date = Date.distantPast
-    private static let cacheInterval: TimeInterval = 2.0 // Cache for 2 seconds
+    private static let cacheInterval: TimeInterval = 10.0 // Cache for 10 seconds - reduces macmon calls
+    
+    // Prevent concurrent macmon executions
+    private static var isFetchingTemperature = false
     
     // Main method to get average CPU temperature
     static func averageCPUTemperature() -> Double {
@@ -24,6 +27,14 @@ class TemperatureMonitor {
         if now.timeIntervalSince(lastTemperatureTime) < cacheInterval {
             return lastTemperature
         }
+        
+        // Prevent concurrent macmon executions
+        guard !isFetchingTemperature else {
+            return lastTemperature
+        }
+        
+        isFetchingTemperature = true
+        defer { isFetchingTemperature = false }
         
         // Try different methods in order of preference
         var temperature = 0.0
@@ -212,10 +223,10 @@ class TemperatureMonitor {
             do {
                 try task.run()
                 
-                // Wait with timeout
-                let timeoutDate = Date().addingTimeInterval(5.0) // 5 second timeout
+                // Wait with reduced timeout for faster failure (3 seconds instead of 5)
+                let timeoutDate = Date().addingTimeInterval(3.0)
                 while task.isRunning && Date() < timeoutDate {
-                    Thread.sleep(forTimeInterval: 0.1)
+                    Thread.sleep(forTimeInterval: 0.05) // Check more frequently
                 }
                 
                 if task.isRunning {

@@ -111,6 +111,7 @@ struct Mac_StatsApp: App {
 struct MenuBarDropdownView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject var systemMonitor: SystemMonitor
+    @EnvironmentObject var preferences: PreferencesManager
     @State private var selectedTab: MonitorTab = .cpu
     
     enum MonitorTab: String, CaseIterable {
@@ -241,6 +242,7 @@ struct MenuBarDropdownView: View {
 // CPU Section
 struct CPUSectionView: View {
     @EnvironmentObject var systemMonitor: SystemMonitor
+    @EnvironmentObject var preferences: PreferencesManager
     let openWindow: OpenWindowAction
     
     var body: some View {
@@ -289,9 +291,16 @@ struct CPUSectionView: View {
                                 Text("Temperature")
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundColor(.secondary)
-                                Text(String(format: "%.0f°C", systemMonitor.cpuTemperature))
+                                
+                                // Display both C and F
+                                let celsius = systemMonitor.cpuTemperature
+                                let fahrenheit = TemperatureMonitor.celsiusToFahrenheit(celsius)
+                                
+                                Text(String(format: "%.0f°C / %.0f°F", celsius, fahrenheit))
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                                     .foregroundColor(temperatureColor(systemMonitor.cpuTemperature))
+                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(1)
                             }
                         }
                         .padding(8)
@@ -792,6 +801,7 @@ struct MemoryProcessRowView: View {
 // Network Section - Polished design matching CPU and Memory sections
 struct NetworkSectionView: View {
     @EnvironmentObject var systemMonitor: SystemMonitor
+    @EnvironmentObject var externalIPManager: ExternalIPManager
     let openWindow: OpenWindowAction
     
     private var downloadMbps: Double {
@@ -808,6 +818,89 @@ struct NetworkSectionView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // External IP and ISP Card
+            VStack(spacing: 0) {
+                HStack(alignment: .center, spacing: 12) {
+                    // Globe icon with flag emoji
+                    ZStack {
+                        Circle()
+                            .fill(Color.blue.opacity(0.1))
+                            .frame(width: 50, height: 50)
+                        
+                        if !externalIPManager.countryCode.isEmpty {
+                            Text(externalIPManager.flagEmoji)
+                                .font(.system(size: 28))
+                        } else {
+                            Image(systemName: "globe")
+                                .font(.system(size: 24))
+                                .foregroundStyle(Color.blue.gradient)
+                        }
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        // External IP
+                        HStack(spacing: 6) {
+                            Image(systemName: "network")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text("External IP")
+                                .font(.system(size: 9, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        if externalIPManager.isLoading {
+                            Text("Loading...")
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.primary)
+                        } else if !externalIPManager.externalIP.isEmpty {
+                            Text(externalIPManager.externalIP)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.primary)
+                                .textSelection(.enabled)
+                        } else {
+                            Text("Not Available")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        // ISP Name
+                        if !externalIPManager.ispName.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "building.2")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text(cleanISPName(externalIPManager.ispName))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.blue)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Refresh button
+                    Button(action: {
+                        externalIPManager.refreshExternalIP()
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14))
+                            .foregroundColor(externalIPManager.isLoading ? .secondary : .blue)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(externalIPManager.isLoading)
+                    .rotationEffect(.degrees(externalIPManager.isLoading ? 360 : 0))
+                    .animation(externalIPManager.isLoading ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: externalIPManager.isLoading)
+                }
+                .padding(16)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            
             // Main Network Usage Card
             VStack(spacing: 0) {
                 // Network Usage Display
@@ -955,7 +1048,7 @@ struct NetworkSectionView: View {
                     .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
             )
             .padding(.horizontal, 16)
-            .padding(.top, 16)
+            .padding(.top, 12)
             
             // Top Network Processes Section
             VStack(alignment: .leading, spacing: 10) {
@@ -1004,6 +1097,14 @@ struct NetworkSectionView: View {
         } else {
             return String(format: "%.2f", mbps)
         }
+    }
+    
+    private func cleanISPName(_ ispName: String) -> String {
+        // Remove AS number prefix (e.g., "AS15169 Google LLC" -> "Google LLC")
+        if let asRange = ispName.range(of: "^AS\\d+\\s+", options: .regularExpression) {
+            return String(ispName[asRange.upperBound...])
+        }
+        return ispName
     }
 }
 
