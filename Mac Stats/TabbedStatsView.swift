@@ -526,7 +526,7 @@ struct TabbedStatsView: View {
     
     private var powerContent: some View {
         VStack(spacing: 12) {
-            if preferences.showPowerConsumption && systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
+            if preferences.showPowerConsumption {
                 fullPowerConsumptionCard
             }
             
@@ -865,119 +865,123 @@ struct TabbedStatsView: View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
                 EnhancedCardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
-			
-                VStack(alignment: .leading, spacing: 8) {
+
+                if systemMonitor.powerConsumptionInfo.isEstimate {
+                    // macmon unavailable — show a clear explanation instead of fake numbers
+                    HStack(spacing: 12) {
+                        Image(systemName: "bolt.slash.fill")
+                            .foregroundColor(.secondary)
+                            .font(.title3)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Power data unavailable")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                            Text("macmon required for CPU/GPU watt readings. Install via: brew install macmon")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                    }
+                } else {
+                    // Real-time data from macmon
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "power")
+                                .foregroundColor(.yellow)
+                                .font(.subheadline)
+                            Text("Total System")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(String(format: "%.1f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .foregroundColor(.yellow)
+                        }
+
+                        if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
+                            GlassInfoRowView(label: "CPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
+                        }
+
+                        if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
+                            GlassInfoRowView(label: "GPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
+                        }
+                    }
+                }
+
+                // Adapter info is sourced independently of macmon — show it when present
+                let adapterInfo = systemMonitor.powerConsumptionInfo.adapterInfo
+                if adapterInfo.isConnected && adapterInfo.wattage > 0 {
+                    Divider()
+
                     HStack {
-                        Image(systemName: "power")
-                            .foregroundColor(.yellow)
+                        Image(systemName: getPowerAdapterIcon(for: adapterInfo.type))
+                            .foregroundColor(.green)
                             .font(.subheadline)
-                        Text("Total System")
+                        Text("Power Adapter")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text(String(format: "%.2f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .monospacedDigit()
-                            .foregroundColor(.yellow)
-                    }
-					
-                    if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
-                        GlassInfoRowView(label: "CPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
-                    }
-					
-                    if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
-                        GlassInfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
-                    }
-					
-                    let adapterInfo = systemMonitor.powerConsumptionInfo.adapterInfo
-                    if adapterInfo.isConnected && adapterInfo.wattage > 0 {
-                        Divider()
-						
-                        HStack {
-                            Image(systemName: getPowerAdapterIcon(for: adapterInfo.type))
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("\(adapterInfo.wattage)W \(adapterInfo.type)")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
                                 .foregroundColor(.green)
-                                .font(.subheadline)
-                            Text("Power Adapter")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
+                            if !adapterInfo.model.isEmpty && adapterInfo.model != "Unknown" {
+                                Text(adapterInfo.model)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+
+                    if adapterInfo.inputPower > 0 {
+                        let usagePercent = (adapterInfo.inputPower / Double(adapterInfo.wattage)) * 100
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .foregroundColor(.blue)
+                                    .font(.caption)
+                                Text("Input Power")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             Spacer()
-                            
                             VStack(alignment: .trailing, spacing: 1) {
-                                Text("\(adapterInfo.wattage)W \(adapterInfo.type)")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.green)
-                                if !adapterInfo.model.isEmpty && adapterInfo.model != "Unknown" {
-                                    Text(adapterInfo.model)
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-						
-                        if adapterInfo.inputPower > 0 {
-                            let usagePercent = (adapterInfo.inputPower / Double(adapterInfo.wattage)) * 100
-                            
-                            HStack {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .foregroundColor(.blue)
-                                        .font(.caption)
-                                    Text("Input Power")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text(String(format: "%.1f W", adapterInfo.inputPower))
-                                        .font(.caption)
-                                        .fontWeight(.semibold)
-                                        .monospacedDigit()
-                                        .foregroundColor(.blue)
-                                    Text(String(format: "%.0f%% of capacity", usagePercent))
-                                        .font(.caption2)
-                                        .monospacedDigit()
-                                        .foregroundColor(getAdapterUsageColor(for: usagePercent))
-                                }
-                            }
-                            VStack(alignment: .leading, spacing: 2) {
-                                ProgressView(value: adapterInfo.inputPower, total: Double(adapterInfo.wattage))
-                                    .tint(getAdapterUsageColor(for: usagePercent))
-                                    .scaleEffect(y: 0.8)
-                            }
-                        }
-						
-                        if adapterInfo.efficiency > 0 {
-                            HStack {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "speedometer")
-                                        .foregroundColor(.purple)
-                                        .font(.caption)
-                                    Text("Efficiency")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                                Spacer()
-                                Text(String(format: "%.0f%%", adapterInfo.efficiency))
+                                Text(String(format: "%.1f W", adapterInfo.inputPower))
                                     .font(.caption)
                                     .fontWeight(.semibold)
-                                    .foregroundColor(getEfficiencyColor(for: adapterInfo.efficiency))
+                                    .monospacedDigit()
+                                    .foregroundColor(.blue)
+                                Text(String(format: "%.0f%% of capacity", usagePercent))
+                                    .font(.caption2)
+                                    .monospacedDigit()
+                                    .foregroundColor(getAdapterUsageColor(for: usagePercent))
                             }
                         }
+                        ProgressView(value: adapterInfo.inputPower, total: Double(adapterInfo.wattage))
+                            .tint(getAdapterUsageColor(for: usagePercent))
+                            .scaleEffect(y: 0.8)
                     }
-					
-                    if systemMonitor.powerConsumptionInfo.isEstimate {
+
+                    if adapterInfo.efficiency > 0 {
                         HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
-                            Text(adapterInfo.isConnected ? "Power data estimated" : "Estimated based on system load")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                            HStack(spacing: 4) {
+                                Image(systemName: "speedometer")
+                                    .foregroundColor(.purple)
+                                    .font(.caption)
+                                Text("Efficiency")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                             Spacer()
+                            Text(String(format: "%.0f%%", adapterInfo.efficiency))
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(getEfficiencyColor(for: adapterInfo.efficiency))
                         }
                     }
                 }

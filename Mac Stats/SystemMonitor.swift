@@ -312,6 +312,10 @@ class SystemMonitor: ObservableObject {
     private var cachedPowerConsumption: PowerConsumptionInfo?
     private var lastPowerConsumptionUpdate: Date = Date.distantPast
     private var isFetchingPowerConsumption: Bool = false
+
+    // Cache for battery details (system_profiler is slow — cache for 10 minutes)
+    var cachedBatteryDetails: (cycleCount: Int, maxCapacity: Int)?
+    var lastBatteryDetailsUpdate: Date = Date.distantPast
     weak var preferences: PreferencesManager? {
         didSet {
             // Update intervals when preferences are set
@@ -401,7 +405,9 @@ class SystemMonitor: ObservableObject {
     }
     
     func refreshAllData() {
+        #if DEBUG
         print(" SystemMonitor: Refreshing all system data...")
+        #endif
         
         let group = DispatchGroup()
         var cpu: Double = 0.0
@@ -480,13 +486,9 @@ class SystemMonitor: ObservableObject {
         
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async {
-            processes = self.getTopProcesses(count: Constants.processCountThreshold)
-            group.leave()
-        }
-        
-        group.enter()
-        DispatchQueue.global(qos: .userInitiated).async {
-            memoryProcesses = self.getTopMemoryProcesses(count: Constants.processCountThreshold)
+            let both = self.getTopProcessesBoth(count: Constants.processCountThreshold)
+            processes = both.cpu
+            memoryProcesses = both.memory
             group.leave()
         }
         
@@ -519,7 +521,9 @@ class SystemMonitor: ObservableObject {
             
             // Set this flag LAST to ensure all data is updated
             self.initialDataLoaded = true
+            #if DEBUG
             print(" SystemMonitor: Initial data loaded successfully!")
+            #endif
             
             // Reset UPS power state tracking after initial load
             self.resetUPSPowerStateTracking()
@@ -556,31 +560,41 @@ class SystemMonitor: ObservableObject {
                 // Track specific interfaces for bonding detection
                 if interfaceName == "bond0" {
                     hasBond0 = true
+                    #if DEBUG
                     print(" Detected bond0 interface")
+                    #endif
                 }
                 if interfaceName == "en0" {
                     hasEn0 = true
+                    #if DEBUG
                     print(" Detected en0 interface")
+                    #endif
                 }
                 if interfaceName == "en1" {
                     hasEn1 = true
+                    #if DEBUG
                     print(" Detected en1 interface")
+                    #endif
                 }
-                
+
                 // Filter out loopback and inactive interfaces
                 if !interfaceName.hasPrefix("lo") && interfaceName != "gif0" && interfaceName != "stf0" {
                     interfaces.append(interfaceName)
-                    
+
                     // Check if interface is active by looking for UP and RUNNING flags
                     if trimmedLine.contains("UP") && trimmedLine.contains("RUNNING") {
                         activeInterfaces.append(interfaceName)
+                        #if DEBUG
                         print(" Active interface: \(interfaceName)")
+                        #endif
                     }
                 }
             }
         }
         
+        #if DEBUG
         print(" Bond detection - bond0: \(hasBond0), en0: \(hasEn0), en1: \(hasEn1)")
+        #endif
         
         // Add a "Combined" interface option if we have multiple active interfaces
         if activeInterfaces.count >= 2 {
@@ -598,7 +612,9 @@ class SystemMonitor: ObservableObject {
             return interface1 < interface2
         }
         
+        #if DEBUG
         print(" Final sorted interfaces: \(sortedInterfaces)")
+        #endif
         
         // Thread-safe updates
         DispatchQueue.main.async {
@@ -637,7 +653,9 @@ class SystemMonitor: ObservableObject {
                         let bondedBytesOut = en0Stats.bytesOut + en1Stats.bytesOut
                         
                         initialStats[interface] = (bytesIn: bondedBytesIn, bytesOut: bondedBytesOut)
+                        #if DEBUG
                         print(" Bond0 detected: summing en0 and en1 traffic (In: \(bondedBytesIn), Out: \(bondedBytesOut))")
+                        #endif
                     } else {
                         let stats = self.getInterfaceStats(interface: interface)
                         initialStats[interface] = stats
@@ -652,53 +670,94 @@ class SystemMonitor: ObservableObject {
     }
     
     private func getInterfaceStats(interface: String) -> (bytesIn: UInt64, bytesOut: UInt64) {
-        let task = Process()
-        let pipe = Pipe()
-        
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
-        task.arguments = ["-b", "-I", interface]
-        task.standardOutput = pipe
-        
-        do {
-            try task.run()
-            task.waitUntilExit()
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            if let output = String(data: data, encoding: .utf8) {
-                // Parse the output to get bytes in/out
-                let lines = output.split(separator: "\n")
-                for line in lines {
-                    let components = line.split(separator: " ").compactMap { $0.isEmpty ? nil : String($0) }
-                    
-                    guard components.count >= 7 && components[0] == interface else {
-                        continue
-                    }
-                    
-                    // Extract bytes in (6th column) and bytes out (9th column)
-                    if let bytesIn = UInt64(components[6]), let bytesOut = UInt64(components[9]) {
-                        return (bytesIn: bytesIn, bytesOut: bytesOut)
-                    }
-                }
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else { return (0, 0) }
+        defer { freeifaddrs(ifaddr) }
+
+        var ptr = ifaddr
+        while let current = ptr {
+            let addr = current.pointee
+            if String(cString: addr.ifa_name) == interface,
+               addr.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
+               let data = addr.ifa_data?.assumingMemoryBound(to: if_data.self) {
+                return (
+                    bytesIn: UInt64(data.pointee.ifi_ibytes),
+                    bytesOut: UInt64(data.pointee.ifi_obytes)
+                )
             }
-        } catch {
-            print(" Error getting stats for interface \(interface): \(error)")
+            ptr = addr.ifa_next
         }
-        
         return (bytesIn: 0, bytesOut: 0)
     }
 
     private func updateStats() {
-        // Run updates on a background thread to avoid blocking the main thread
         DispatchQueue.global(qos: .userInitiated).async {
-            let cpu = self.getCurrentCPU()
-            let cpuTemp = self.getCurrentCPUTemperature()
-            let fan = self.getCurrentFanInfo() // Add fan info update
-            let memory = self.getCurrentMemory()
-            let disk = self.getCurrentDisk()
-            let network = self.getCurrentNetwork()
-            let processes = self.getTopProcesses(count: Constants.processCountThreshold)
-            let memoryProcesses = self.getTopMemoryProcesses(count: Constants.processCountThreshold)
-            
+            let group = DispatchGroup()
+            let queue = DispatchQueue.global(qos: .userInitiated)
+
+            // Group 1: CPU sensors (fast Mach kernel calls)
+            var cpu: Double = 0
+            var cpuTemp: Double = 0
+            var fan = FanInfo()
+            group.enter()
+            queue.async {
+                cpu = self.getCurrentCPU()
+                cpuTemp = self.getCurrentCPUTemperature()
+                fan = self.getCurrentFanInfo()
+                group.leave()
+            }
+
+            // Group 2: Memory + Disk (independent filesystem/VM calls)
+            var memory: (used: Double, total: Double) = (0, 0)
+            var disk: (free: Double, total: Double, purgeable: Double) = (0, 0, 0)
+            group.enter()
+            queue.async {
+                memory = self.getCurrentMemory()
+                disk = self.getCurrentDisk()
+                group.leave()
+            }
+
+            // Group 3: Network interface byte counters
+            var network: (upload: Double, download: Double) = (0, 0)
+            group.enter()
+            queue.async {
+                network = self.getCurrentNetwork()
+                group.leave()
+            }
+
+            // Group 4: Process list — single ps call returning both CPU and memory sorted lists
+            var processes: [SystemProcessInfo] = []
+            var memoryProcesses: [SystemProcessInfo] = []
+            group.enter()
+            queue.async {
+                let both = self.getTopProcessesBoth(count: Constants.processCountThreshold)
+                processes = both.cpu
+                memoryProcesses = both.memory
+                group.leave()
+            }
+
+            // Group 5: Battery + UPS — share a single IOPSCopyPowerSourcesInfo blob
+            var ups = UPSInfo()
+            var battery = BatteryInfo()
+            group.enter()
+            queue.async {
+                let powerBlob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue()
+                battery = self.getCurrentBatteryInfo(blob: powerBlob)
+                ups = self.getCurrentUPSInfo(blob: powerBlob)
+                group.leave()
+            }
+
+            // Group 6: System info (may hit cache, occasionally slow)
+            var systemInfo = SystemInfo()
+            group.enter()
+            queue.async {
+                systemInfo = self.getCachedOrFreshSystemInfo()
+                group.leave()
+            }
+
+            group.wait()
+
+            // Network process list uses its own counter/cache (kept sequential)
             self.networkProcessUpdateCounter += 1
             let networkProcesses: [ProcessNetworkInfo]
             if self.networkProcessUpdateCounter >= Int(Constants.networkProcessUpdateInterval / self.updateInterval) {
@@ -708,18 +767,12 @@ class SystemMonitor: ObservableObject {
             } else {
                 networkProcesses = self.cachedNetworkProcesses
             }
-            
-            let ups = self.getCurrentUPSInfo()
-            let battery = self.getCurrentBatteryInfo()
-            
-            let systemInfo = self.getCachedOrFreshSystemInfo()
-            
+
             DispatchQueue.main.async {
                 self.updateCPUHistory(with: cpu)
                 self.updateCPUTemperatureHistory(with: cpuTemp)
                 self.updateNetworkHistory(upload: network.upload, download: network.download)
-                
-                // Update all properties at once to minimize objectWillChange notifications
+
                 self.cpuUsage = cpu
                 self.cpuTemperature = cpuTemp
                 self.fanInfo = fan
@@ -733,8 +786,7 @@ class SystemMonitor: ObservableObject {
                 self.batteryInfo = battery
                 self.systemInfo = systemInfo
                 self.initialDataLoaded = true
-                
-                // Check for UPS power state changes and send notification if needed
+
                 self.checkAndNotifyUPSPowerChange()
             }
         }
@@ -927,7 +979,9 @@ class SystemMonitor: ObservableObject {
         
         // Check which interface is selected
         let selectedInterface = preferences?.selectedNetworkInterface ?? "All"
+        #if DEBUG
         print(" Selected interface for monitoring: '\(selectedInterface)'")
+        #endif
         
         // Collect current stats for all interfaces
         var currentStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
@@ -957,10 +1011,12 @@ class SystemMonitor: ObservableObject {
                 totalBytesIn += bondedBytesIn
                 totalBytesOut += bondedBytesOut
                 
+                #if DEBUG
                 print(" Bond0 stats - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
                 print(" Bond0 stats - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
                 print(" Bond0 stats - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
                 print(" Bond0 stats - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
+                #endif
                 
                 // Don't double count en0 and en1 when bond0 is present
                 continue
@@ -1055,10 +1111,12 @@ class SystemMonitor: ObservableObject {
                 
                 currentStats[selectedInterface] = (bytesIn: bondedBytesIn, bytesOut: bondedBytesOut)
                 
+                #if DEBUG
                 print(" Bond0 initial - bond0 direct: In=\(bond0Stats.bytesIn), Out=\(bond0Stats.bytesOut)")
                 print(" Bond0 initial - en0: In=\(en0Stats.bytesIn), Out=\(en0Stats.bytesOut)")
                 print(" Bond0 initial - en1: In=\(en1Stats.bytesIn), Out=\(en1Stats.bytesOut)")
                 print(" Bond0 initial - Final: In=\(bondedBytesIn), Out=\(bondedBytesOut)")
+                #endif
                 
                 if let current = currentStats[selectedInterface],
                    let previous = previousInterfaceStats[selectedInterface] {
@@ -1068,8 +1126,10 @@ class SystemMonitor: ObservableObject {
                     bytesInRate = Double(bytesInDiff) / timeInterval
                     bytesOutRate = Double(bytesOutDiff) / timeInterval
                     
+                    #if DEBUG
                     print(" Bond0 rate calculation: In: \(bytesInRate) B/s, Out: \(bytesOutRate) B/s")
                     print(" Bond0 differences: InDiff=\(bytesInDiff), OutDiff=\(bytesOutDiff), TimeInterval=\(timeInterval)")
+                    #endif
                 }
             } else {
                 // Calculate for specific interface only
@@ -1101,77 +1161,35 @@ class SystemMonitor: ObservableObject {
         return (upload: 0.0, download: 0.0)
     }
     
-    private func getTopProcesses(count: Int) -> [SystemProcessInfo] {
+    /// Runs a single /bin/ps and returns both CPU-sorted and memory-sorted top processes.
+    private func getTopProcessesBoth(count: Int) -> (cpu: [SystemProcessInfo], memory: [SystemProcessInfo]) {
         guard let output = executeCommand("/bin/ps", ["-A", "-o", "pid,%cpu,%mem,comm", "-c"]) else {
-            print("Error getting process info")
-            return []
+            return ([], [])
         }
-        
-        let lines = output.split(separator: "\n").dropFirst() // Skip header
-        var parsedProcesses: [SystemProcessInfo] = []
-        parsedProcesses.reserveCapacity(lines.count) // Pre-allocate capacity
-        
+
+        let lines = output.split(separator: "\n").dropFirst()
+        var cpuList: [SystemProcessInfo] = []
+        var memList: [SystemProcessInfo] = []
+        cpuList.reserveCapacity(lines.count)
+
         for line in lines {
             let components = line.split(separator: " ").compactMap { $0.isEmpty ? nil : String($0) }
-            
             guard components.count >= 4,
                   let pid = Int32(components[0]),
                   let cpu = Double(components[1].replacingOccurrences(of: "%", with: "")),
                   let mem = Double(components[2].replacingOccurrences(of: "%", with: "")) else {
                 continue
             }
-            
-            let commandString = components[3...].joined(separator: " ")
-            
-            // Filter with constant threshold
-            if cpu > Constants.minCpuUsageFilter {
-                parsedProcesses.append(SystemProcessInfo(
-                    pid: pid,
-                    name: commandString,
-                    cpuUsage: cpu,
-                    memoryUsage: mem
-                ))
-            }
+            let name = components[3...].joined(separator: " ")
+            let info = SystemProcessInfo(pid: pid, name: name, cpuUsage: cpu, memoryUsage: mem)
+            if cpu > Constants.minCpuUsageFilter { cpuList.append(info) }
+            if mem > Constants.minMemoryUsageFilter { memList.append(info) }
         }
-        
-        // Sort and return top processes
-        return Array(parsedProcesses.sorted { $0.cpuUsage > $1.cpuUsage }.prefix(count))
-    }
-    
-    private func getTopMemoryProcesses(count: Int) -> [SystemProcessInfo] {
-        guard let output = executeCommand("/bin/ps", ["-A", "-o", "pid,%mem,%cpu,comm", "-c"]) else {
-            print("Error getting memory process info")
-            return []
-        }
-        
-        let lines = output.split(separator: "\n").dropFirst() // Skip header
-        var parsedProcesses: [SystemProcessInfo] = []
-        parsedProcesses.reserveCapacity(lines.count)
-        
-        for line in lines {
-            let components = line.split(separator: " ").compactMap { $0.isEmpty ? nil : String($0) }
-            
-            guard components.count >= 4,
-                  let pid = Int32(components[0]),
-                  let mem = Double(components[1].replacingOccurrences(of: "%", with: "")),
-                  let cpu = Double(components[2].replacingOccurrences(of: "%", with: "")) else {
-                continue
-            }
-            
-            let commandString = components[3...].joined(separator: " ")
-            
-            if mem > Constants.minMemoryUsageFilter {
-                parsedProcesses.append(SystemProcessInfo(
-                    pid: pid,
-                    name: commandString,
-                    cpuUsage: cpu,
-                    memoryUsage: mem
-                ))
-            }
-        }
-        
-        // Sort by memory and return top processes
-        return Array(parsedProcesses.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count))
+
+        return (
+            cpu: Array(cpuList.sorted { $0.cpuUsage > $1.cpuUsage }.prefix(count)),
+            memory: Array(memList.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count))
+        )
     }
     
     // MARK: - Process Network Monitoring Methods
@@ -1192,26 +1210,38 @@ class SystemMonitor: ObservableObject {
         
         for path in possiblePaths {
             if FileManager.default.fileExists(atPath: path) {
+                #if DEBUG
                 print(" Found nettop at: \(path)")
-                
+                #endif
+
                 let nettopArgs = ["-P", "-L", "1"]
+                #if DEBUG
                 print(" Running: \(path) \(nettopArgs.joined(separator: " "))")
-                
+                #endif
+
                 if let output = executeCommand(path, nettopArgs) {
                     if !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        #if DEBUG
                         print(" nettop succeeded!")
                         print(" First 500 chars: \(String(output.prefix(500)))")
+                        #endif
                         return output
                     } else {
+                        #if DEBUG
                         print(" nettop returned empty output")
+                        #endif
                     }
                 } else {
+                    #if DEBUG
                     print(" nettop execution failed")
+                    #endif
                 }
             }
         }
-        
+
+        #if DEBUG
         print(" nettop not found in any standard location")
+        #endif
         return ""
     }
     
@@ -1219,7 +1249,9 @@ class SystemMonitor: ObservableObject {
         let lines = output.split(separator: "\n")
         var processNetworkInfos: [ProcessNetworkInfo] = []
         
+        #if DEBUG
         print(" Parsing nettop CSV format with \(lines.count) lines")
+        #endif
         
         // Skip the header line (first line contains column names)
         for (lineIndex, line) in lines.enumerated().dropFirst() {
@@ -1229,17 +1261,23 @@ class SystemMonitor: ObservableObject {
             
             if let processInfo = parseNettopCSVLine(String(trimmedLine), lineIndex: lineIndex) {
                 processNetworkInfos.append(processInfo)
+                #if DEBUG
                 print(" Parsed: \(processInfo.name) (PID: \(processInfo.pid)) - In: \(processInfo.bytesIn), Out: \(processInfo.bytesOut)")
+                #endif
             }
         }
         
+        #if DEBUG
         print(" Successfully parsed \(processNetworkInfos.count) processes from nettop CSV")
+        #endif
         
         // Filter out processes with zero network activity and sort by total usage
         let activeProcesses = processNetworkInfos.filter { $0.totalUsage > 0 }
         let sortedProcesses = activeProcesses.sorted { $0.totalUsage > $1.totalUsage }
         
+        #if DEBUG
         print(" Found \(activeProcesses.count) processes with network activity")
+        #endif
         
         return Array(sortedProcesses.prefix(maxCount))
     }
@@ -1250,14 +1288,18 @@ class SystemMonitor: ObservableObject {
         
         // Expected format: time,process_name.PID,,,bytes_in,bytes_out,...
         guard components.count >= 6 else {
+            #if DEBUG
             print(" Line \(lineIndex) has insufficient columns: \(components.count)")
+            #endif
             return nil
         }
         
         // Extract process name and PID from second column (format: "process_name.PID")
         let processField = components[1]
         guard !processField.isEmpty else {
+            #if DEBUG
             print(" Line \(lineIndex) has empty process field")
+            #endif
             return nil
         }
         
@@ -1426,12 +1468,12 @@ class SystemMonitor: ObservableObject {
         )
     }
     
-    private func getCurrentUPSInfo() -> UPSInfo {
-        // Check for UPS devices using IOKit Power Sources
-        guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+    private func getCurrentUPSInfo(blob preBlob: CFTypeRef? = nil) -> UPSInfo {
+        // Accept a pre-fetched power source blob to avoid redundant IOPSCopyPowerSourcesInfo calls.
+        guard let blob = preBlob ?? IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
             return UPSInfo(powerSource: "AC Power")
         }
-        
+
         guard let sources = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else {
             return UPSInfo(powerSource: "AC Power")
         }
@@ -1510,8 +1552,8 @@ class SystemMonitor: ObservableObject {
             }
         }
         
-        // No UPS found, return basic power source info
-        let powerSourceState = getPowerSourceState()
+        // No UPS found, return basic power source info (reuse the already-fetched blob)
+        let powerSourceState = getPowerSourceState(blob: blob)
         return UPSInfo(powerSource: powerSourceState)
     }
     
@@ -1527,36 +1569,35 @@ class SystemMonitor: ObservableObject {
         }
     }
     
-    // Helper method to get general power source state
-    private func getPowerSourceState() -> String {
-        guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+    // Helper method to get general power source state.
+    // Accepts a pre-fetched blob to avoid an extra IOPSCopyPowerSourcesInfo call.
+    private func getPowerSourceState(blob preBlob: CFTypeRef? = nil) -> String {
+        guard let blob = preBlob ?? IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
             return "AC Power"
         }
-        
+
         guard let sources = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else {
             return "AC Power"
         }
-        
-        // Check if we're running on battery power
+
         for ps in sources {
             guard let description = IOPSGetPowerSourceDescription(blob, ps)?.takeUnretainedValue() as? [String: Any] else {
                 continue
             }
-            
             if let powerSource = description[kIOPSPowerSourceStateKey] as? String {
                 return mapPowerSourceState(powerSource)
             }
         }
-        
+
         return "AC Power"
     }
     
-    private func getCurrentBatteryInfo() -> BatteryInfo {
-        // Check for battery devices using IOKit Power Sources
-        guard let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
+    private func getCurrentBatteryInfo(blob preBlob: CFTypeRef? = nil) -> BatteryInfo {
+        // Accept a pre-fetched power source blob to avoid redundant IOPSCopyPowerSourcesInfo calls.
+        guard let blob = preBlob ?? IOPSCopyPowerSourcesInfo()?.takeRetainedValue() else {
             return BatteryInfo()
         }
-        
+
         guard let sources = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] else {
             return BatteryInfo()
         }
@@ -1875,22 +1916,36 @@ class SystemMonitor: ObservableObject {
     }
     
     private func getPowerConsumptionFromMacmon() -> PowerConsumptionInfo? {
+        // Primary: call libIOReport directly — no subprocess, no session restrictions
+        if let sample = sampleIOReportPower(intervalMs: 300) {
+            // SMC "PSTR" gives total wall power (display, storage, fans, etc.)
+            // Take the max of SMC and SoC power, matching macmon's sys_power logic.
+            let smcPower = readSMCSystemPower() ?? 0.0
+            let totalPower = max(smcPower, sample.total)
+            return PowerConsumptionInfo(
+                cpuPower: sample.cpu,
+                gpuPower: sample.gpu,
+                totalSystemPower: totalPower,
+                timestamp: Date(),
+                isEstimate: false
+            )
+        }
+
+        // Fallback: try macmon subprocess (may not work in all contexts)
         let macmonPaths = [
             "/opt/homebrew/bin/macmon",
             "/usr/local/bin/macmon",
             "/usr/bin/macmon",
             "/opt/local/bin/macmon"
         ]
-        
+
         for path in macmonPaths {
             guard FileManager.default.fileExists(atPath: path) else { continue }
-            
-            // Use the enhanced executeCommand with reduced timeout for faster failure
-            if let output = executeCommandWithTimeout(path, ["pipe", "-s", "1"], timeout: Constants.macmonCallTimeout) {
+            if let output = runMacmonStreamingFirstLine(path, timeout: Constants.macmonCallTimeout) {
                 return parseMacmonJSONOutput(output)
             }
         }
-        
+
         return nil
     }
 
@@ -2092,17 +2147,15 @@ class SystemMonitor: ObservableObject {
             }
             #endif
             
+            let semaphore = DispatchSemaphore(value: 0)
+            task.terminationHandler = { _ in semaphore.signal() }
             try task.run()
-            
-            // Add timeout protection
-            let timeoutDate = Date().addingTimeInterval(10.0) // 10 second timeout
-            while task.isRunning && Date() < timeoutDate {
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            
-            if task.isRunning {
-                print(" Command timeout: \(executablePath)")
+
+            if semaphore.wait(timeout: .now() + 10.0) == .timedOut {
                 task.terminate()
+                #if DEBUG
+                print(" Command timeout: \(executablePath)")
+                #endif
                 return nil
             }
             
@@ -2131,43 +2184,80 @@ class SystemMonitor: ObservableObject {
         }
     }
     
-    // New method specifically for macmon with shorter timeout
-    private func executeCommandWithTimeout(_ executablePath: String, _ arguments: [String], timeout: TimeInterval) -> String? {
+    // Run macmon and capture the first JSON line, then terminate.
+    // - readabilityHandler fires fast when macmon writes its first sample (~500ms)
+    // - terminationHandler fires immediately if macmon crashes, avoiding the full timeout wait
+    private func runMacmonStreamingFirstLine(_ path: String, timeout: TimeInterval) -> String? {
         let task = Process()
-        let pipe = Pipe()
+        let outputPipe = Pipe()
         let errorPipe = Pipe()
-        
-        task.executableURL = URL(fileURLWithPath: executablePath)
-        task.arguments = arguments
-        task.standardOutput = pipe
+
+        task.executableURL = URL(fileURLWithPath: path)
+        task.arguments = ["pipe", "-s", "1", "-i", "500"]
+        task.standardOutput = outputPipe
         task.standardError = errorPipe
-        
+
+        // Strip env vars injected by Xcode that can break native binaries
+        var env = ProcessInfo.processInfo.environment
+        for key in env.keys where key.hasPrefix("DYLD_") || key.hasPrefix("OBJC_") || key.hasPrefix("NSZombie") {
+            env.removeValue(forKey: key)
+        }
+        task.environment = env
+
+        let semaphore = DispatchSemaphore(value: 0)
+        var capturedLine: String?
+        var buffer = ""
+
+        // Signal on output — fast path when macmon writes JSON
+        outputPipe.fileHandleForReading.readabilityHandler = { handle in
+            guard capturedLine == nil else { return }
+            let data = handle.availableData
+            guard !data.isEmpty, let chunk = String(data: data, encoding: .utf8) else { return }
+            buffer += chunk
+            if let newlineRange = buffer.range(of: "\n") {
+                let line = String(buffer[buffer.startIndex..<newlineRange.lowerBound])
+                    .trimmingCharacters(in: .whitespaces)
+                if !line.isEmpty {
+                    capturedLine = line
+                    semaphore.signal()
+                }
+            }
+        }
+
+        // Signal on termination — fast failure if macmon crashes without writing output
+        task.terminationHandler = { proc in
+            #if DEBUG
+            if capturedLine == nil {
+                let errData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let stderr = String(data: errData, encoding: .utf8) ?? ""
+                print(" macmon exited (code \(proc.terminationStatus)) without output. stderr: \(stderr)")
+            }
+            #endif
+            semaphore.signal()
+        }
+
         do {
             try task.run()
-            
-            // Use custom timeout
-            let timeoutDate = Date().addingTimeInterval(timeout)
-            while task.isRunning && Date() < timeoutDate {
-                Thread.sleep(forTimeInterval: 0.05) // Check more frequently for faster response
-            }
-            
-            if task.isRunning {
-                print(" ⚠️ macmon timeout after \(timeout)s")
-                task.terminate()
-                return nil
-            }
-            
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            
-            if task.terminationStatus != 0 {
-                return nil
-            }
-            
-            return String(data: data, encoding: .utf8)
         } catch {
-            print(" Error executing macmon: \(error)")
+            #if DEBUG
+            print(" Error launching macmon: \(error)")
+            #endif
             return nil
         }
+
+        let waitResult = semaphore.wait(timeout: .now() + timeout)
+
+        outputPipe.fileHandleForReading.readabilityHandler = nil
+        if task.isRunning { task.terminate() }
+
+        if waitResult == .timedOut {
+            #if DEBUG
+            print(" ⚠️ macmon timeout after \(timeout)s")
+            #endif
+            return nil
+        }
+
+        return capturedLine
     }
     
     deinit {

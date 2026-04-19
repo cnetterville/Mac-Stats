@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		E9AE71AA2ECE416000D9A3F8 /* SETTINGS_PERFORMANCE_FIX.md in Resources */ = {isa = PBXBuildFile; fileRef = E9AE71A92ECE416000D9A3F8 /* SETTINGS_PERFORMANCE_FIX.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		E9F4CEF42E61D2B900949E04 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E9AE71A92ECE416000D9A3F8 /* SETTINGS_PERFORMANCE_FIX.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SETTINGS_PERFORMANCE_FIX.md; sourceTree = "<group>"; };
 		E9F4CEE52E61D2B800949E04 /* Mac Stats.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Mac Stats.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E9F4CEF32E61D2B900949E04 /* Mac StatsTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Mac StatsTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E9F4CEFD2E61D2B900949E04 /* Mac StatsUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Mac StatsUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -79,6 +84,7 @@
 				E9F4CEF62E61D2B900949E04 /* Mac StatsTests */,
 				E9F4CF002E61D2B900949E04 /* Mac StatsUITests */,
 				E9F4CEE62E61D2B800949E04 /* Products */,
+				E9AE71A92ECE416000D9A3F8 /* SETTINGS_PERFORMANCE_FIX.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -215,6 +221,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E9AE71AA2ECE416000D9A3F8 /* SETTINGS_PERFORMANCE_FIX.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -118,12 +118,14 @@ struct MenuBarDropdownView: View {
         case cpu = "CPU"
         case memory = "Memory"
         case network = "Network"
+        case disk = "Disk"
         
         var icon: String {
             switch self {
             case .cpu: return "cpu.fill"
             case .memory: return "memorychip.fill"
             case .network: return "antenna.radiowaves.left.and.right"
+            case .disk: return "internaldrive.fill"
             }
         }
         
@@ -132,6 +134,7 @@ struct MenuBarDropdownView: View {
             case .cpu: return .blue
             case .memory: return .purple
             case .network: return .green
+            case .disk: return .mint
             }
         }
     }
@@ -184,31 +187,19 @@ struct MenuBarDropdownView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     
-                    Button(action: {
-                        NSApplication.shared.terminate(nil)
-                    }) {
-                        Image(systemName: "power")
-                            .font(.system(size: 11))
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .controlSize(.small)
+
                 }
             }
             .padding(16)
             .background(
-                LinearGradient(
-                    colors: [Color(NSColor.controlBackgroundColor), Color(NSColor.controlBackgroundColor).opacity(0.8)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                LiquidGlassBackground(material: .headerView, cornerRadius: 0, borderWidth: 0, borderOpacity: 0)
             )
             
             Divider()
             
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(spacing: 0) {
-                    // Switch between CPU and Memory views
+                    // Switch between monitor views with smooth fade transition
                     Group {
                         switch selectedTab {
                         case .cpu:
@@ -220,15 +211,39 @@ struct MenuBarDropdownView: View {
                         case .network:
                             NetworkSectionView(openWindow: openWindow)
                                 .environmentObject(systemMonitor)
+                        case .disk:
+                            DiskSectionView()
+                                .environmentObject(systemMonitor)
                         }
                     }
-                    .id(selectedTab) // More efficient than complex transitions
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
                 }
             }
-            // Enable momentum scrolling
             .scrollBounceBehavior(.basedOnSize)
+            
+            // Footer with quit action
+            Divider()
+            HStack {
+                Text("Mac Stats")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Button(action: { NSApplication.shared.terminate(nil) }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "power")
+                            .font(.system(size: 10))
+                        Text("Quit")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
         }
-        .frame(width: 320, height: 520)
+        .frame(width: 320, height: 540)
         .animation(.easeInOut(duration: 0.15), value: selectedTab)
     }
     
@@ -355,7 +370,11 @@ struct CPUSectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
@@ -391,7 +410,11 @@ struct CPUSectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -652,7 +675,11 @@ struct MemorySectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
@@ -688,7 +715,11 @@ struct MemorySectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -816,6 +847,19 @@ struct NetworkSectionView: View {
         downloadMbps + uploadMbps
     }
     
+    // Dynamically scale the gauge based on observed peak traffic
+    private var dynamicScaleMbps: Double {
+        let downloadPeak = systemMonitor.downloadHistory.map { ($0 * 8) / 1_000_000 }.max() ?? 0
+        let uploadPeak = systemMonitor.uploadHistory.map { ($0 * 8) / 1_000_000 }.max() ?? 0
+        let peak = max(totalMbps, downloadPeak + uploadPeak)
+        let niceScales: [Double] = [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 10000]
+        return niceScales.first(where: { $0 >= peak * 1.25 }) ?? 10000
+    }
+    
+    private var speedUnit: String {
+        totalMbps >= 1000 ? "Gbps" : "Mbps"
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // External IP and ISP Card
@@ -896,7 +940,11 @@ struct NetworkSectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
@@ -914,7 +962,7 @@ struct NetworkSectionView: View {
                         
                         // Progress circle (based on a 100 Mbps scale)
                         Circle()
-                            .trim(from: 0, to: min(totalMbps / 100, 1.0))
+                            .trim(from: 0, to: min(totalMbps / dynamicScaleMbps, 1.0))
                             .stroke(
                                 Color.green.gradient,
                                 style: StrokeStyle(lineWidth: 8, lineCap: .round)
@@ -930,7 +978,7 @@ struct NetworkSectionView: View {
                                 .foregroundColor(.green)
                                 .minimumScaleFactor(0.7)
                                 .lineLimit(1)
-                            Text("Mbps")
+                            Text(speedUnit)
                                 .font(.system(size: 10, weight: .medium))
                                 .foregroundColor(.secondary)
                         }
@@ -1045,7 +1093,11 @@ struct NetworkSectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -1081,7 +1133,11 @@ struct NetworkSectionView: View {
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(NSColor.controlBackgroundColor).opacity(0.3))
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
             )
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -1105,6 +1161,201 @@ struct NetworkSectionView: View {
             return String(ispName[asRange.upperBound...])
         }
         return ispName
+    }
+}
+
+// Disk Section
+struct DiskSectionView: View {
+    @EnvironmentObject var systemMonitor: SystemMonitor
+    
+    private var usedDisk: Double {
+        systemMonitor.diskUsage.total - systemMonitor.diskUsage.free
+    }
+    
+    private var purelyFree: Double {
+        max(systemMonitor.diskUsage.free - systemMonitor.diskUsage.purgeable, 0)
+    }
+    
+    private var diskPercent: Double {
+        guard systemMonitor.diskUsage.total > 0 else { return 0 }
+        return (usedDisk / systemMonitor.diskUsage.total) * 100
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Main Disk Usage Card
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 16) {
+                    // Circular progress gauge
+                    ZStack {
+                        Circle()
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                            .frame(width: 90, height: 90)
+                        
+                        Circle()
+                            .trim(from: 0, to: diskPercent / 100)
+                            .stroke(
+                                diskColor(diskPercent).gradient,
+                                style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                            )
+                            .frame(width: 90, height: 90)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 0.5), value: diskPercent)
+                        
+                        VStack(spacing: 2) {
+                            Text(String(format: "%.0f", diskPercent))
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                                .foregroundColor(diskColor(diskPercent))
+                            Text("%")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    // Storage stats
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "internaldrive.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.mint.gradient)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Used")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Text(formatGB(usedDisk))
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.mint)
+                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                        )
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.green.gradient)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Free")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                Text(formatGB(purelyFree))
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.green)
+                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                        )
+                    }
+                    
+                    Spacer()
+                }
+                .padding(20)
+                
+                // Storage breakdown bar
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Storage Breakdown")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("Total: \(formatGB(systemMonitor.diskUsage.total))")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.gray.opacity(0.2))
+                            
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.mint, Color.mint.opacity(0.7)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: geometry.size.width * CGFloat(diskPercent / 100))
+                            
+                            HStack {
+                                if diskPercent > 15 {
+                                    Text(String(format: "%.1f%%", diskPercent))
+                                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                                        .foregroundColor(.white)
+                                        .padding(.leading, 8)
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+                    .frame(height: 24)
+                    
+                    // Space legend
+                    HStack(spacing: 16) {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.mint).frame(width: 6, height: 6)
+                            Text("Used \(formatGB(usedDisk))")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        if systemMonitor.diskUsage.purgeable > 1 {
+                            HStack(spacing: 4) {
+                                Circle().fill(Color.yellow.opacity(0.8)).frame(width: 6, height: 6)
+                                Text("Purgeable \(formatGB(systemMonitor.diskUsage.purgeable))")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.gray.opacity(0.3)).frame(width: 6, height: 6)
+                            Text("Free \(formatGB(purelyFree))")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 16)
+        }
+    }
+    
+    private func diskColor(_ percent: Double) -> Color {
+        switch percent {
+        case 0..<60: return .mint
+        case 60..<80: return .orange
+        default: return .red
+        }
+    }
+    
+    private func formatGB(_ gb: Double) -> String {
+        if gb >= 1000 {
+            return String(format: "%.1f TB", gb / 1000)
+        } else {
+            return String(format: "%.0f GB", gb)
+        }
     }
 }
 
@@ -1421,6 +1672,7 @@ struct MenuBarLabelView: View {
             // Initialize dependencies.
             systemMonitor.preferences = preferences
             ExternalIPManager.shared.setPreferences(preferences)
+            
             imageManager.updateDependencies(
                 systemMonitor: systemMonitor,
                 preferences: preferences
@@ -1435,18 +1687,7 @@ struct MenuBarLabelView: View {
                 }
                 .store(in: &cancellables)
             
-            preferences.$updateInterval
-                .sink { newValue in
-                    systemMonitor.updateMonitoringInterval(newValue)
-                }
-                .store(in: &cancellables)
-            
-            preferences.$powerUpdateInterval
-                .sink { newValue in
-                    systemMonitor.updatePowerMonitoringInterval(newValue)
-                }
-                .store(in: &cancellables)
-            
+            // Network interface changes should trigger a refresh
             preferences.$selectedNetworkInterface
                 .sink { _ in
                     systemMonitor.refreshAllData()

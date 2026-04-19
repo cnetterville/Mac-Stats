@@ -15,10 +15,17 @@ struct SettingsView: View {
     @State private var isTestingEmail = false
     @State private var testResultMessage = ""
     @State private var testResultColor: Color = .primary
+    @State private var selectedTab: SettingsTab = .general
+    
+    // Enum to track tabs
+    enum SettingsTab: Int, Hashable {
+        case general = 0
+        case network = 1
+        case notifications = 2
+    }
     
     var body: some View {
-        TabView {
-            // General Settings Tab
+        TabView(selection: $selectedTab) {
             Form {
                 Section("Display Options") {
                     Toggle("Show CPU Usage", isOn: $preferences.showCPU)
@@ -40,6 +47,7 @@ struct SettingsView: View {
                                     Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit)
                                 }
                                 .pickerStyle(.segmented)
+                                .animation(nil, value: preferences.temperatureUnit)
                                 
                                 Toggle("Show Both Units", isOn: $preferences.showBothTemperatureUnits)
                                     .font(.caption)
@@ -111,12 +119,6 @@ struct SettingsView: View {
                             .foregroundColor(.secondary)
                     }
                 }
-                .onChange(of: preferences.updateInterval) { _, newValue in
-                    systemMonitor.updateMonitoringInterval(newValue)
-                }
-                .onChange(of: preferences.powerUpdateInterval) { _, newValue in
-                    systemMonitor.updatePowerMonitoringInterval(newValue)
-                }
                 
                 Section("Startup") {
                     Toggle("Launch at Startup", isOn: $preferences.launchAtStartup)
@@ -142,11 +144,13 @@ struct SettingsView: View {
             .tabItem {
                 Label("General", systemImage: "gear")
             }
+            .tag(SettingsTab.general)
             
             NetworkSettingsView()
                 .tabItem {
                     Label("Network", systemImage: "network")
                 }
+                .tag(SettingsTab.network)
             
             NotificationSettingsView(
                 isTestingEmail: $isTestingEmail,
@@ -156,6 +160,7 @@ struct SettingsView: View {
             .tabItem {
                 Label("Notifications", systemImage: "bell")
             }
+            .tag(SettingsTab.notifications)
         }
         .padding()
         .frame(minWidth: 400, minHeight: 300)
@@ -171,6 +176,9 @@ struct NetworkSettingsView: View {
     @State private var lastUpdated: Date?
     @State private var isRefreshing: Bool = false
     
+    // Cache network interfaces to avoid repeated access to systemMonitor
+    @State private var cachedNetworkInterfaces: [String] = []
+    
     var body: some View {
         Form {
             Section("Monitoring Mode") {
@@ -183,6 +191,7 @@ struct NetworkSettingsView: View {
                         Text("Process-based").tag(NetworkMonitoringMode.process)
                     }
                     .pickerStyle(.segmented)
+                    .animation(nil, value: preferences.networkMonitoringMode)
                     
                     Text(preferences.networkMonitoringMode.description)
                         .font(.caption)
@@ -207,14 +216,15 @@ struct NetworkSettingsView: View {
                 Section("Network Interface") {
                     Picker("Interface", selection: $preferences.selectedNetworkInterface) {
                         Text("All Interfaces").tag("All")
-                        ForEach(systemMonitor.networkInterfaces, id: \.self) { interface in
+                        ForEach(cachedNetworkInterfaces, id: \.self) { interface in
                             Text(interface).tag(interface)
                         }
                     }
                     .pickerStyle(.menu)
+                    .animation(nil, value: preferences.selectedNetworkInterface)
                     
                     Button("Refresh Interfaces") {
-                        systemMonitor.refreshNetworkInterfaces()
+                        refreshNetworkInterfaces()
                     }
                 }
             }
@@ -225,6 +235,7 @@ struct NetworkSettingsView: View {
                     Text("Bits").tag(NetworkUnit.bits)
                 }
                 .pickerStyle(.segmented)
+                .animation(nil, value: preferences.networkUnit)
                 
                 Toggle("Auto Scale Units", isOn: $preferences.autoScaleNetwork)
             }
@@ -332,6 +343,20 @@ struct NetworkSettingsView: View {
         .formStyle(.grouped)
         .onAppear {
             updateLocalState()
+            updateCachedNetworkInterfaces()
+        }
+    }
+    
+    private func updateCachedNetworkInterfaces() {
+        // Update cached interfaces from systemMonitor
+        cachedNetworkInterfaces = systemMonitor.networkInterfaces
+    }
+    
+    private func refreshNetworkInterfaces() {
+        systemMonitor.refreshNetworkInterfaces()
+        // Small delay to ensure systemMonitor has updated
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            updateCachedNetworkInterfaces()
         }
     }
     

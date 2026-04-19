@@ -135,6 +135,11 @@ class PreferencesManager: ObservableObject {
     
     // MARK: - Private Properties
     private var cancellables = Set<AnyCancellable>()
+    private weak var systemMonitor: SystemMonitor?
+    
+    func setSystemMonitor(_ monitor: SystemMonitor) {
+        self.systemMonitor = monitor
+    }
     
     init() {
         loadUserDefaults()
@@ -263,44 +268,102 @@ class PreferencesManager: ObservableObject {
     }
     
     private func setupChangeObservers() {
-        // Add observers for automatic saving when values change
-        $showCPU.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showCPUTemperature.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showMemory.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showDisk.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showPowerConsumption.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showMenuBarCPU.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showMenuBarMemory.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showMenuBarDisk.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showMenuBarNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showMenuBarUptime.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $updateInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $powerUpdateInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $launchAtStartup.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $selectedNetworkInterface.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $networkUnit.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $networkMonitoringMode.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $autoScaleNetwork.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $temperatureUnit.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $showBothTemperatureUnits.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $useTabbedView.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        // Debounce all changes to reduce the frequency of saves
+        // This prevents excessive UserDefaults writes when rapidly changing settings
         
-        // Email notification settings
-        $mailjetEmailEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $mailjetAPIKey.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $mailjetAPISecret.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $mailjetFromEmail.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $mailjetFromName.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $mailjetToEmail.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        // Group 1: Display preferences
+        let displayPublishers = Publishers.MergeMany([
+            $showCPU.map { _ in () }.eraseToAnyPublisher(),
+            $showCPUTemperature.map { _ in () }.eraseToAnyPublisher(),
+            $showMemory.map { _ in () }.eraseToAnyPublisher(),
+            $showDisk.map { _ in () }.eraseToAnyPublisher(),
+            $showNetwork.map { _ in () }.eraseToAnyPublisher(),
+            $showPowerConsumption.map { _ in () }.eraseToAnyPublisher()
+        ])
         
-        // UPS and IP notification settings
-        $upsPowerChangeNotificationEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $ipChangeNotificationEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $ipChangeNotificationInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        // Group 2: Menu bar preferences
+        let menuBarPublishers = Publishers.MergeMany([
+            $showMenuBarCPU.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarMemory.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarDisk.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarNetwork.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarUptime.map { _ in () }.eraseToAnyPublisher()
+        ])
         
-        // Scheduled IP check settings
-        $scheduledIPCheckEnabled.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
-        $scheduledIPCheckInterval.sink { _ in self.saveUserDefaults() }.store(in: &cancellables)
+        // Group 3: Update intervals and startup
+        let systemPublishers = Publishers.MergeMany([
+            $updateInterval.map { _ in () }.eraseToAnyPublisher(),
+            $powerUpdateInterval.map { _ in () }.eraseToAnyPublisher(),
+            $launchAtStartup.map { _ in () }.eraseToAnyPublisher()
+        ])
+        
+        // Group 4: Network preferences
+        let networkPublishers = Publishers.MergeMany([
+            $selectedNetworkInterface.map { _ in () }.eraseToAnyPublisher(),
+            $networkUnit.map { _ in () }.eraseToAnyPublisher(),
+            $networkMonitoringMode.map { _ in () }.eraseToAnyPublisher(),
+            $autoScaleNetwork.map { _ in () }.eraseToAnyPublisher()
+        ])
+        
+        // Group 5: Temperature and UI preferences
+        let uiPublishers = Publishers.MergeMany([
+            $temperatureUnit.map { _ in () }.eraseToAnyPublisher(),
+            $showBothTemperatureUnits.map { _ in () }.eraseToAnyPublisher(),
+            $useTabbedView.map { _ in () }.eraseToAnyPublisher()
+        ])
+        
+        // Group 6: Email notification settings
+        let emailPublishers = Publishers.MergeMany([
+            $mailjetEmailEnabled.map { _ in () }.eraseToAnyPublisher(),
+            $mailjetAPIKey.map { _ in () }.eraseToAnyPublisher(),
+            $mailjetAPISecret.map { _ in () }.eraseToAnyPublisher(),
+            $mailjetFromEmail.map { _ in () }.eraseToAnyPublisher(),
+            $mailjetFromName.map { _ in () }.eraseToAnyPublisher(),
+            $mailjetToEmail.map { _ in () }.eraseToAnyPublisher()
+        ])
+        
+        // Group 7: Notification preferences
+        let notificationPublishers = Publishers.MergeMany([
+            $upsPowerChangeNotificationEnabled.map { _ in () }.eraseToAnyPublisher(),
+            $ipChangeNotificationEnabled.map { _ in () }.eraseToAnyPublisher(),
+            $ipChangeNotificationInterval.map { _ in () }.eraseToAnyPublisher(),
+            $scheduledIPCheckEnabled.map { _ in () }.eraseToAnyPublisher(),
+            $scheduledIPCheckInterval.map { _ in () }.eraseToAnyPublisher()
+        ])
+        
+        // Combine all groups
+        Publishers.MergeMany([
+            displayPublishers.eraseToAnyPublisher(),
+            menuBarPublishers.eraseToAnyPublisher(),
+            systemPublishers.eraseToAnyPublisher(),
+            networkPublishers.eraseToAnyPublisher(),
+            uiPublishers.eraseToAnyPublisher(),
+            emailPublishers.eraseToAnyPublisher(),
+            notificationPublishers.eraseToAnyPublisher()
+        ])
+        .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+        .sink { [weak self] (_: Void) -> Void in
+            self?.saveUserDefaults()
+        }
+        .store(in: &cancellables)
+        
+        // Separate observers for update intervals that need to update SystemMonitor
+        $updateInterval
+            .dropFirst() // Ignore initial value
+            .removeDuplicates()
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] newValue in
+                self?.systemMonitor?.updateMonitoringInterval(newValue)
+            }
+            .store(in: &cancellables)
+        
+        $powerUpdateInterval
+            .dropFirst() // Ignore initial value
+            .removeDuplicates()
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] newValue in
+                self?.systemMonitor?.updatePowerMonitoringInterval(newValue)
+            }
+            .store(in: &cancellables)
     }
 }

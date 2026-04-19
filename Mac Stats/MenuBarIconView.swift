@@ -134,7 +134,7 @@ struct MenuBarIconView: View {
         VStack(alignment: .center, spacing: compactSpacing) {
             Text("MEM")
                 .font(compactFont)
-            Text(String(format: "%.1fG", systemMonitor.memoryUsage.total - systemMonitor.memoryUsage.used))
+            Text(String(format: "%.0f%%", systemMonitor.memoryUsage.total > 0 ? (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100 : 0))
                 .font(dataFont)
         }
         .frame(width: 45) // Reduced from 50

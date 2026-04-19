@@ -60,7 +60,7 @@ struct CardBasedStatsView: View {
                             networkCard()
                         }
                         // Power Consumption
-                        if preferences.showPowerConsumption && systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
+                        if preferences.showPowerConsumption {
                             powerConsumptionCard()
                         }
                     }
@@ -1127,45 +1127,54 @@ struct CardBasedStatsView: View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
                 EnhancedCardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Image(systemName: "power")
-                            .foregroundColor(.yellow)
-                            .font(.subheadline)
-                            .glassTextVibrancy()
-                        Text("Total System")
-                            .font(.subheadline)
+
+                if systemMonitor.powerConsumptionInfo.isEstimate {
+                    // macmon unavailable — show a clear explanation instead of fake numbers
+                    HStack(spacing: 12) {
+                        Image(systemName: "bolt.slash.fill")
                             .foregroundColor(.secondary)
+                            .font(.title3)
                             .glassTextVibrancy()
-                        Spacer()
-                        Text(String(format: "%.2f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .monospacedDigit()
-                            .foregroundColor(.yellow)
-                            .glassTextVibrancy()
-                    }
-                    
-                    if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
-                        InfoRowView(label: "CPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
-                    }
-                    
-                    if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
-                        InfoRowView(label: "GPU", value: String(format: "%.2f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
-                    }
-                    
-                    if systemMonitor.powerConsumptionInfo.isEstimate {
-                        HStack {
-                            Image(systemName: "info.circle")
-                                .foregroundColor(.secondary)
-                                .font(.caption)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Power data unavailable")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
                                 .glassTextVibrancy()
-                            Text("Estimated based on system load")
+                            Text("macmon required for CPU/GPU watt readings. Install via: brew install macmon")
                                 .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                    }
+                } else {
+                    // Real-time data from macmon
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "power")
+                                .foregroundColor(.yellow)
+                                .font(.subheadline)
+                                .glassTextVibrancy()
+                            Text("Total System")
+                                .font(.subheadline)
                                 .foregroundColor(.secondary)
                                 .glassTextVibrancy()
                             Spacer()
+                            Text(String(format: "%.1f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .monospacedDigit()
+                                .foregroundColor(.yellow)
+                                .glassTextVibrancy()
+                        }
+
+                        if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
+                            InfoRowView(label: "CPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
+                        }
+
+                        if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
+                            InfoRowView(label: "GPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
                         }
                     }
                 }
