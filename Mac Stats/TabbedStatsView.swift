@@ -1165,13 +1165,11 @@ struct TabbedStatsView: View {
 					
                     // Fan rows — individual per fan if SMC data available, else single estimated row
                     let fanSpeeds = systemMonitor.fanInfo.speeds
-                    let fanMaxSpeeds = systemMonitor.fanInfo.maxSpeeds
                     let fanCount = fanSpeeds.count
 
                     if fanCount > 0 {
                         ForEach(0..<fanCount, id: \.self) { i in
                             let rpm = Double(fanSpeeds[i])
-                            let maxRPM = i < fanMaxSpeeds.count ? Double(fanMaxSpeeds[i]) : systemMonitor.fanInfo.maxRPM
                             let label = fanCount == 1 ? "Fan Speed" : "Fan \(i + 1)"
 
                             HStack {

@@ -42,43 +42,21 @@ struct MenuBarIconView: View {
     }
     
     private func enabledStatsView() -> some View {
-        // Each enabled stat block is separated by a thin vertical divider.
-        // The HStack sizes itself naturally so the menu bar expands as items are enabled.
-        let showCPU    = preferences.showCPU && preferences.showMenuBarCPU
-        let showMem    = preferences.showMemory && preferences.showMenuBarMemory
-        let showDisk   = preferences.showDisk && preferences.showMenuBarDisk
-        let showNet    = preferences.showNetwork && preferences.showMenuBarNetwork
-        let showUptime = preferences.showMenuBarUptime
-        let showPower  = preferences.showMenuBarPower
-        let showTemp   = preferences.showMenuBarCPUTemp
+        // Build an ordered list of enabled stat views. Dividers are inserted
+        // automatically between items — adding a new stat requires only one entry here.
+        var items: [AnyView] = []
+        if preferences.showCPU     && preferences.showMenuBarCPU    { items.append(AnyView(cpuStatView())) }
+        if preferences.showMemory  && preferences.showMenuBarMemory  { items.append(AnyView(memoryStatView())) }
+        if preferences.showDisk    && preferences.showMenuBarDisk    { items.append(AnyView(diskStatView())) }
+        if preferences.showNetwork && preferences.showMenuBarNetwork { items.append(AnyView(networkStatCompactView())) }
+        if preferences.showMenuBarUptime                            { items.append(AnyView(uptimeStatView())) }
+        if preferences.showMenuBarPower                             { items.append(AnyView(powerStatView())) }
+        if preferences.showMenuBarCPUTemp                           { items.append(AnyView(cpuTempStatView())) }
 
         return HStack(alignment: .center, spacing: 0) {
-            if showCPU {
-                cpuStatView().padding(.horizontal, 4)
-            }
-            if showMem {
-                if showCPU { statDivider() }
-                memoryStatView().padding(.horizontal, 4)
-            }
-            if showDisk {
-                if showCPU || showMem { statDivider() }
-                diskStatView().padding(.horizontal, 4)
-            }
-            if showNet {
-                if showCPU || showMem || showDisk { statDivider() }
-                networkStatCompactView().padding(.horizontal, 4)
-            }
-            if showUptime {
-                if showCPU || showMem || showDisk || showNet { statDivider() }
-                uptimeStatView().padding(.horizontal, 4)
-            }
-            if showPower {
-                if showCPU || showMem || showDisk || showNet || showUptime { statDivider() }
-                powerStatView().padding(.horizontal, 4)
-            }
-            if showTemp {
-                if showCPU || showMem || showDisk || showNet || showUptime || showPower { statDivider() }
-                cpuTempStatView().padding(.horizontal, 4)
+            ForEach(items.indices, id: \.self) { i in
+                if i > 0 { statDivider() }
+                items[i].padding(.horizontal, 4)
             }
         }
         .monospacedDigit()
@@ -112,21 +90,16 @@ struct MenuBarIconView: View {
     @ViewBuilder
     private func uptimeStatView() -> some View {
         VStack(alignment: .center, spacing: compactSpacing) {
-            HStack(spacing: 0) { // Reduced from 1 to 0
-                Image(systemName: "arrow.up")
-                    .font(compactFont)
-                    .foregroundColor(.green)
-                    .imageScale(.small)
-                Text("UP")
-                    .font(compactFont)
-                    .padding(.leading, 0) // Removed padding
-            }
+            Image(systemName: "arrow.up")
+                .font(compactFont)
+                .foregroundColor(.green)
+                .imageScale(.small)
             Text(formatCompactUptime(systemMonitor.systemInfo.uptime))
                 .font(dataFont)
                 .minimumScaleFactor(0.8)
                 .lineLimit(1)
         }
-        .frame(width: 50) // Reduced from 60
+        .frame(width: 40)
         .monospacedDigit()
     }
     
@@ -173,13 +146,16 @@ struct MenuBarIconView: View {
     
     @ViewBuilder
     private func diskStatView() -> some View {
+        let used = systemMonitor.diskUsage.total > 0
+            ? ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100
+            : 0.0
         VStack(alignment: .center, spacing: compactSpacing) {
             Text("DSK")
                 .font(compactFont)
-            Text(String(format: "%.0fG", systemMonitor.diskUsage.free - systemMonitor.diskUsage.purgeable))
+            Text(String(format: "%.0f%%", used))
                 .font(dataFont)
         }
-        .frame(width: 35) // Reduced from 40
+        .frame(width: 35)
         .monospacedDigit()
     }
     

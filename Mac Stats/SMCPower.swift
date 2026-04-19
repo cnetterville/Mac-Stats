@@ -38,7 +38,7 @@ func readSMCCPUTemperature() -> Double? {
             guard let bytes = smcRead(conn, key: key, size: 2) else { continue }
             let raw = Int16(bitPattern: (UInt16(bytes[0]) << 8) | UInt16(bytes[1]))
             let celsius = Double(raw) / 256.0
-            if celsius > 0 && celsius < 120 { temps.append(celsius) }
+            if celsius >= 30 && celsius < 120 { temps.append(celsius) }
         }
         guard !temps.isEmpty else { return nil }
         return temps.reduce(0, +) / Double(temps.count)
