@@ -67,6 +67,8 @@ class PreferencesManager: ObservableObject {
         case showMenuBarDisk = "showMenuBarDisk"
         case showMenuBarNetwork = "showMenuBarNetwork"
         case showMenuBarUptime = "showMenuBarUptime"
+        case showMenuBarPower = "showMenuBarPower"
+        case showMenuBarCPUTemp = "showMenuBarCPUTemp"
         case updateInterval = "updateInterval"
         case powerUpdateInterval = "powerUpdateInterval"
         case launchAtStartup = "launchAtStartup"
@@ -103,6 +105,8 @@ class PreferencesManager: ObservableObject {
     @Published var showMenuBarDisk: Bool = false
     @Published var showMenuBarNetwork: Bool = false
     @Published var showMenuBarUptime: Bool = false
+    @Published var showMenuBarPower: Bool = false
+    @Published var showMenuBarCPUTemp: Bool = false
     @Published var updateInterval: TimeInterval = 3.0  // Increased from 2 to 3 seconds for menubar app
     @Published var powerUpdateInterval: TimeInterval = 60.0  // Increased from 30 to 60 seconds - reduces macmon calls
     @Published var launchAtStartup: Bool = false
@@ -190,6 +194,8 @@ class PreferencesManager: ObservableObject {
         UserDefaults.standard.set(showMenuBarDisk, forKey: Keys.showMenuBarDisk.rawValue)
         UserDefaults.standard.set(showMenuBarNetwork, forKey: Keys.showMenuBarNetwork.rawValue)
         UserDefaults.standard.set(showMenuBarUptime, forKey: Keys.showMenuBarUptime.rawValue)
+        UserDefaults.standard.set(showMenuBarPower, forKey: Keys.showMenuBarPower.rawValue)
+        UserDefaults.standard.set(showMenuBarCPUTemp, forKey: Keys.showMenuBarCPUTemp.rawValue)
         UserDefaults.standard.set(updateInterval, forKey: Keys.updateInterval.rawValue)
         UserDefaults.standard.set(powerUpdateInterval, forKey: Keys.powerUpdateInterval.rawValue)
         UserDefaults.standard.set(launchAtStartup, forKey: Keys.launchAtStartup.rawValue)
@@ -240,6 +246,8 @@ class PreferencesManager: ObservableObject {
         showMenuBarDisk = UserDefaults.standard.object(forKey: Keys.showMenuBarDisk.rawValue) as? Bool ?? false
         showMenuBarNetwork = UserDefaults.standard.object(forKey: Keys.showMenuBarNetwork.rawValue) as? Bool ?? false
         showMenuBarUptime = UserDefaults.standard.object(forKey: Keys.showMenuBarUptime.rawValue) as? Bool ?? false
+        showMenuBarPower = UserDefaults.standard.object(forKey: Keys.showMenuBarPower.rawValue) as? Bool ?? false
+        showMenuBarCPUTemp = UserDefaults.standard.object(forKey: Keys.showMenuBarCPUTemp.rawValue) as? Bool ?? false
         updateInterval = UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) : 3.0  // Default 3 seconds
         powerUpdateInterval = UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) : 60.0  // Default 60 seconds
         launchAtStartup = UserDefaults.standard.bool(forKey: Keys.launchAtStartup.rawValue)
@@ -287,7 +295,9 @@ class PreferencesManager: ObservableObject {
             $showMenuBarMemory.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarDisk.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarNetwork.map { _ in () }.eraseToAnyPublisher(),
-            $showMenuBarUptime.map { _ in () }.eraseToAnyPublisher()
+            $showMenuBarUptime.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarPower.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarCPUTemp.map { _ in () }.eraseToAnyPublisher()
         ])
         
         // Group 3: Update intervals and startup

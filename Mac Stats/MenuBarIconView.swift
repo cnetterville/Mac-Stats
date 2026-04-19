@@ -26,8 +26,8 @@ struct MenuBarIconView: View {
             }
         }
         .foregroundColor(.white)
-        .frame(maxWidth: 250, maxHeight: 22) // Reduced from 300 to 250
-        .fixedSize()
+        .frame(height: 22)
+        .fixedSize(horizontal: true, vertical: false)
         .monospacedDigit()
     }
     
@@ -36,29 +36,59 @@ struct MenuBarIconView: View {
                (preferences.showMemory && preferences.showMenuBarMemory) ||
                (preferences.showDisk && preferences.showMenuBarDisk) ||
                (preferences.showNetwork && preferences.showMenuBarNetwork) ||
-               preferences.showMenuBarUptime
+               preferences.showMenuBarUptime ||
+               preferences.showMenuBarPower ||
+               preferences.showMenuBarCPUTemp
     }
     
     private func enabledStatsView() -> some View {
-        HStack(alignment: .center, spacing: 2) { // Reduced from 3 to 2 to further decrease spacing
-            if preferences.showCPU && preferences.showMenuBarCPU {
-                cpuStatView()
+        // Each enabled stat block is separated by a thin vertical divider.
+        // The HStack sizes itself naturally so the menu bar expands as items are enabled.
+        let showCPU    = preferences.showCPU && preferences.showMenuBarCPU
+        let showMem    = preferences.showMemory && preferences.showMenuBarMemory
+        let showDisk   = preferences.showDisk && preferences.showMenuBarDisk
+        let showNet    = preferences.showNetwork && preferences.showMenuBarNetwork
+        let showUptime = preferences.showMenuBarUptime
+        let showPower  = preferences.showMenuBarPower
+        let showTemp   = preferences.showMenuBarCPUTemp
+
+        return HStack(alignment: .center, spacing: 0) {
+            if showCPU {
+                cpuStatView().padding(.horizontal, 4)
             }
-            if preferences.showMemory && preferences.showMenuBarMemory {
-                memoryStatView()
+            if showMem {
+                if showCPU { statDivider() }
+                memoryStatView().padding(.horizontal, 4)
             }
-            if preferences.showDisk && preferences.showMenuBarDisk {
-                diskStatView()
+            if showDisk {
+                if showCPU || showMem { statDivider() }
+                diskStatView().padding(.horizontal, 4)
             }
-            if preferences.showNetwork && preferences.showMenuBarNetwork {
-                networkStatCompactView()
+            if showNet {
+                if showCPU || showMem || showDisk { statDivider() }
+                networkStatCompactView().padding(.horizontal, 4)
             }
-            if preferences.showMenuBarUptime {
-                uptimeStatView()
+            if showUptime {
+                if showCPU || showMem || showDisk || showNet { statDivider() }
+                uptimeStatView().padding(.horizontal, 4)
+            }
+            if showPower {
+                if showCPU || showMem || showDisk || showNet || showUptime { statDivider() }
+                powerStatView().padding(.horizontal, 4)
+            }
+            if showTemp {
+                if showCPU || showMem || showDisk || showNet || showUptime || showPower { statDivider() }
+                cpuTempStatView().padding(.horizontal, 4)
             }
         }
-        .frame(maxWidth: 350) // Reduced from 400
         .monospacedDigit()
+    }
+
+    @ViewBuilder
+    private func statDivider() -> some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.25))
+            .frame(width: 1, height: 14)
     }
     
     private func formatCompactUptime(_ uptime: TimeInterval) -> String {
@@ -209,5 +239,52 @@ struct MenuBarIconView: View {
         }
         .frame(width: 95)
         .monospacedDigit()
+    }
+
+    @ViewBuilder
+    private func powerStatView() -> some View {
+        let watts = systemMonitor.powerConsumptionInfo.totalSystemPower
+        VStack(alignment: .center, spacing: compactSpacing) {
+            Text("PWR")
+                .font(compactFont)
+            Text(watts >= 100 ? String(format: "%.0fW", watts) : String(format: "%.1fW", watts))
+                .font(dataFont)
+                .foregroundColor(powerColor(for: watts))
+        }
+        .frame(width: 42)
+        .monospacedDigit()
+    }
+
+    @ViewBuilder
+    private func cpuTempStatView() -> some View {
+        let temp = systemMonitor.cpuTemperature
+        let value = preferences.temperatureUnit == .fahrenheit
+            ? TemperatureMonitor.celsiusToFahrenheit(temp) : temp
+        let unit  = preferences.temperatureUnit == .fahrenheit ? "°F" : "°C"
+        VStack(alignment: .center, spacing: compactSpacing) {
+            Text("TMP")
+                .font(compactFont)
+            Text(String(format: "%.0f\(unit)", value))
+                .font(dataFont)
+                .foregroundColor(tempColor(for: temp))
+        }
+        .frame(width: 42)
+        .monospacedDigit()
+    }
+
+    private func powerColor(for watts: Double) -> Color {
+        switch watts {
+        case 0..<30:  return .white
+        case 30..<80: return .yellow
+        default:      return .red
+        }
+    }
+
+    private func tempColor(for celsius: Double) -> Color {
+        switch celsius {
+        case 0..<60:  return .white
+        case 60..<80: return .yellow
+        default:      return .red
+        }
     }
 }

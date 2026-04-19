@@ -82,6 +82,8 @@ struct SettingsView: View {
                     Toggle("Show Disk in Menu Bar", isOn: $preferences.showMenuBarDisk)
                     Toggle("Show Network in Menu Bar", isOn: $preferences.showMenuBarNetwork)
                     Toggle("Show Uptime in Menu Bar", isOn: $preferences.showMenuBarUptime)
+                    Toggle("Show Power in Menu Bar", isOn: $preferences.showMenuBarPower)
+                    Toggle("Show CPU Temp in Menu Bar", isOn: $preferences.showMenuBarCPUTemp)
                 }
                 
                 Section("Update Interval") {
