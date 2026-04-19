@@ -38,16 +38,23 @@ class TemperatureMonitor {
         
         // Try different methods in order of preference
         var temperature = 0.0
-        
-        // Method 1: Try macmon (best option if available)
+
+        // Method 1: Direct SMC read (most accurate — no subprocess needed)
+        if let smcTemp = readSMCCPUTemperature(), smcTemp > 0 {
+            lastTemperature = smcTemp
+            lastTemperatureTime = now
+            return smcTemp
+        }
+
+        // Method 2: Try macmon subprocess as fallback
         temperature = getTemperatureFromMacmon()
         if temperature > 0 {
             lastTemperature = temperature
             lastTemperatureTime = now
             return temperature
         }
-        
-        // Method 2: Try thermal_state (system thermal state)
+
+        // Method 3: Try thermal_state (system thermal state)
         temperature = getThermalStateTemperature()
         if temperature > 0 {
             lastTemperature = temperature
@@ -55,7 +62,7 @@ class TemperatureMonitor {
             return temperature
         }
         
-        // Method 3: Try sysctl thermal information
+        // Method 4: Try sysctl thermal information
         temperature = getTemperatureFromSysctl()
         if temperature > 0 {
             lastTemperature = temperature
@@ -63,7 +70,7 @@ class TemperatureMonitor {
             return temperature
         }
         
-        // Method 4: Estimate based on system load (fallback)
+        // Method 5: Estimate based on system load (fallback)
         temperature = estimateTemperatureFromLoad()
         lastTemperature = temperature
         lastTemperatureTime = now

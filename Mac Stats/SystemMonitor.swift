@@ -144,21 +144,28 @@ struct FanInfo {
     let thermalState: Int
     let thermalPressure: String
     let maxRPM: Double
-    
+    let speeds: [Int]       // individual fan RPMs (empty when estimated)
+    let maxSpeeds: [Int]    // individual fan max RPMs (empty when estimated)
+
     init() {
         self.rpm = 0.0
         self.isEstimate = true
         self.thermalState = 0
         self.thermalPressure = "Normal"
         self.maxRPM = 6000.0
+        self.speeds = []
+        self.maxSpeeds = []
     }
-    
-    init(rpm: Double, isEstimate: Bool, thermalState: Int, thermalPressure: String, maxRPM: Double = 6000.0) {
+
+    init(rpm: Double, isEstimate: Bool, thermalState: Int, thermalPressure: String,
+         maxRPM: Double = 6000.0, speeds: [Int] = [], maxSpeeds: [Int] = []) {
         self.rpm = rpm
         self.isEstimate = isEstimate
         self.thermalState = thermalState
         self.thermalPressure = thermalPressure
         self.maxRPM = maxRPM
+        self.speeds = speeds
+        self.maxSpeeds = maxSpeeds
     }
 }
 
@@ -292,6 +299,7 @@ class SystemMonitor: ObservableObject {
     // MARK: - Private Properties
     private var previousUPSPowerState: Bool = false
     private var lastUPSPowerNotificationTime: Date?
+    private var smoothedFanSpeeds: [Double] = []   // EMA-smoothed fan RPMs
     private var timer: Timer?
     private var powerTimer: Timer?
     private var updateInterval: TimeInterval = Constants.defaultUpdateInterval
@@ -1458,13 +1466,40 @@ class SystemMonitor: ObservableObject {
     
     private func getCurrentFanInfo() -> FanInfo {
         let thermalInfo = TemperatureMonitor.getThermalInfo()
-        
+
+        // Try real fan data from SMC first
+        if let fanData = readSMCFans(), !fanData.speeds.isEmpty {
+            // Apply EMA smoothing (alpha=0.4) to reduce SMC jitter.
+            // Re-initialise smoothed array if fan count changes.
+            let rawSpeeds = fanData.speeds.map(Double.init)
+            let alpha = 0.4
+            if smoothedFanSpeeds.count != rawSpeeds.count {
+                smoothedFanSpeeds = rawSpeeds
+            } else {
+                smoothedFanSpeeds = zip(smoothedFanSpeeds, rawSpeeds)
+                    .map { prev, raw in alpha * raw + (1 - alpha) * prev }
+            }
+            let smoothedInts = smoothedFanSpeeds.map { Int($0.rounded()) }
+            let avgRPM = smoothedFanSpeeds.reduce(0, +) / Double(smoothedFanSpeeds.count)
+            let maxRPM = fanData.maxSpeeds.max().map(Double.init) ?? 6000.0
+            return FanInfo(
+                rpm: avgRPM,
+                isEstimate: false,
+                thermalState: thermalInfo.state,
+                thermalPressure: thermalInfo.pressure,
+                maxRPM: maxRPM,
+                speeds: smoothedInts,
+                maxSpeeds: fanData.maxSpeeds
+            )
+        }
+
+        // Fall back to thermal estimate
         return FanInfo(
             rpm: thermalInfo.fanEstimate,
-            isEstimate: true, // Always true since we can't get real data without sudo
+            isEstimate: true,
             thermalState: thermalInfo.state,
             thermalPressure: thermalInfo.pressure,
-            maxRPM: 6000.0 // Typical max for Apple Silicon Macs
+            maxRPM: 6000.0
         )
     }
     

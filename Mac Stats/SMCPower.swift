@@ -2,20 +2,85 @@
 //  SMCPower.swift
 //  Mac Stats
 //
-//  Reads total system power from the SMC (System Management Controller)
-//  via IOKit. Uses the "PSTR" key, the same key macmon uses for sys_power.
-//
-//  Returns the wall-power draw of the entire Mac including CPU/GPU/ANE,
-//  DRAM, display engine, storage, fans, and other components — unlike
-//  IOReport "Energy Model" which only covers the SoC.
+//  Reads power, fan speed, and temperature data from the SMC
+//  (System Management Controller) via IOKit.
 //
 
 import Foundation
 import IOKit
 
+// MARK: - Public API
+
 /// Read total system power (in watts) from the SMC "PSTR" key.
 /// Returns nil if the SMC is unavailable or the key is not present on this model.
 func readSMCSystemPower() -> Double? {
+    withSMCConnection { conn in
+        guard let bytes = smcRead(conn, key: "PSTR", size: 4) else { return nil }
+        var v: Float32 = 0
+        withUnsafeMutableBytes(of: &v) { $0.copyBytes(from: bytes) }
+        let w = Double(v)
+        return w > 0 ? w : nil
+    }
+}
+
+/// Reads average CPU temperature (°C) directly from SMC P-core and E-core keys.
+/// Returns nil if no recognised temperature keys respond on this model.
+func readSMCCPUTemperature() -> Double? {
+    // Apple Silicon P-core and E-core die temperature keys (type sp78).
+    // sp78: 2 bytes big-endian signed fixed-point, value = (Int16 / 256.0)
+    let keys = [
+        "Tp01", "Tp05", "Tp09", "Tp0D", "Tp0X", "Tp0b", "Tp0f", "Tp0j", // P-cores
+        "Te05", "Te09"                                                       // E-cores
+    ]
+    return withSMCConnection { conn in
+        var temps: [Double] = []
+        for key in keys {
+            guard let bytes = smcRead(conn, key: key, size: 2) else { continue }
+            let raw = Int16(bitPattern: (UInt16(bytes[0]) << 8) | UInt16(bytes[1]))
+            let celsius = Double(raw) / 256.0
+            if celsius > 0 && celsius < 120 { temps.append(celsius) }
+        }
+        guard !temps.isEmpty else { return nil }
+        return temps.reduce(0, +) / Double(temps.count)
+    }
+}
+
+struct SMCFanData {
+    let speeds: [Int]    // actual RPM per fan
+    let maxSpeeds: [Int] // max RPM per fan (from F{n}Mx key)
+}
+
+/// Returns actual and max RPM for each fan the SMC exposes on this Mac.
+/// Returns nil if the SMC has no fan keys (fanless models).
+func readSMCFans() -> SMCFanData? {
+    withSMCConnection { conn in
+        // FNum is a 1-byte key containing the fan count.
+        guard let b = smcRead(conn, key: "FNum", size: 1) else { return nil }
+        let count = Int(b[0])
+        guard count > 0 && count < 20 else { return nil }
+
+        var speeds: [Int] = []
+        var maxSpeeds: [Int] = []
+        for i in 0..<count {
+            // F{n}Ac = actual speed, F{n}Mx = max speed
+            // Type fpe2: 2-byte big-endian fixed-point, divide by 4 for RPM
+            func readRPM(_ key: String) -> Int? {
+                guard let bytes = smcRead(conn, key: key, size: 2) else { return nil }
+                let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
+                let rpm = Int((Double(raw) / 4.0).rounded())
+                return rpm > 0 ? rpm : nil
+            }
+            if let rpm = readRPM("F\(i)Ac") { speeds.append(rpm) }
+            if let rpm = readRPM("F\(i)Mx") { maxSpeeds.append(rpm) }
+        }
+        guard !speeds.isEmpty else { return nil }
+        return SMCFanData(speeds: speeds, maxSpeeds: maxSpeeds)
+    } ?? nil
+}
+
+// MARK: - Connection helper
+
+private func withSMCConnection<T>(_ body: (io_connect_t) -> T?) -> T? {
     let service = IOServiceGetMatchingService(0, IOServiceMatching("AppleSMC"))
     guard service != IO_OBJECT_NULL else { return nil }
     defer { IOObjectRelease(service) }
@@ -24,13 +89,7 @@ func readSMCSystemPower() -> Double? {
     guard IOServiceOpen(service, mach_task_self_, 0, &conn) == kIOReturnSuccess else { return nil }
     defer { IOServiceClose(conn) }
 
-    guard let bytes = smcReadKey(conn, key: "PSTR", size: 4) else { return nil }
-
-    // "PSTR" is an IEEE 754 float32 in little-endian byte order.
-    var float32: Float32 = 0
-    withUnsafeMutableBytes(of: &float32) { $0.copyBytes(from: bytes) }
-    let watts = Double(float32)
-    return watts > 0 ? watts : nil
+    return body(conn)
 }
 
 // MARK: - Private SMC struct layout
@@ -78,21 +137,26 @@ private struct SMCParamStruct {
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
-private func smcReadKey(_ conn: io_connect_t, key: String, size: UInt32) -> [UInt8]? {
-    // Encode the 4-char key as a big-endian UInt32 (e.g. "PSTR" → 0x50535452)
+/// Two-step SMC read: first fetch key info to confirm the key exists and get its
+/// exact data size, then read the value. More reliable than a single-step read.
+private func smcRead(_ conn: io_connect_t, key: String, size: UInt32) -> [UInt8]? {
     let keyCode = key.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+    let sz = MemoryLayout<SMCParamStruct>.size
 
-    var input = SMCParamStruct()
-    var output = SMCParamStruct()
-    input.key = keyCode
-    input.keyInfo.dataSize = size
-    input.data8 = 5  // kSMCReadKey
+    // Step 1: get key info (data8 = 9 = kSMCGetKeyInfo)
+    var infoIn = SMCParamStruct(); var infoOut = SMCParamStruct()
+    infoIn.key = keyCode; infoIn.data8 = 9
+    var outSz = sz
+    let infoRet = IOConnectCallStructMethod(conn, 2, &infoIn, sz, &infoOut, &outSz)
+    guard infoRet == kIOReturnSuccess, infoOut.result == 0 else { return nil }
+    let dataSize = infoOut.keyInfo.dataSize > 0 ? infoOut.keyInfo.dataSize : size
 
-    let structSize = MemoryLayout<SMCParamStruct>.size
-    var outSize = structSize
+    // Step 2: read value (data8 = 5 = kSMCReadKey)
+    var readIn = SMCParamStruct(); var readOut = SMCParamStruct()
+    readIn.key = keyCode; readIn.keyInfo.dataSize = dataSize; readIn.data8 = 5
+    outSz = sz
+    let readRet = IOConnectCallStructMethod(conn, 2, &readIn, sz, &readOut, &outSz)
+    guard readRet == kIOReturnSuccess, readOut.result == 0 else { return nil }
 
-    let ret = IOConnectCallStructMethod(conn, 2, &input, structSize, &output, &outSize)
-    guard ret == kIOReturnSuccess, output.result == 0 else { return nil }
-
-    return withUnsafeBytes(of: output.bytes) { Array($0.prefix(Int(size))) }
+    return withUnsafeBytes(of: readOut.bytes) { Array($0.prefix(Int(dataSize))) }
 }

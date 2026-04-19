@@ -1163,33 +1163,64 @@ struct TabbedStatsView: View {
 					
                     Divider()
 					
-                    HStack {
-                        HStack(spacing: 4) {
-                            Image(systemName: "fan")
-                                .foregroundColor(.blue)
-                                .font(.subheadline)
-                            Text("Fan Speed")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-                        Spacer()
+                    // Fan rows — individual per fan if SMC data available, else single estimated row
+                    let fanSpeeds = systemMonitor.fanInfo.speeds
+                    let fanMaxSpeeds = systemMonitor.fanInfo.maxSpeeds
+                    let fanCount = fanSpeeds.count
 
-                        
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
-                                .font(.title3)
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
-                                .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
-                            
-                            if systemMonitor.fanInfo.isEstimate {
+                    if fanCount > 0 {
+                        ForEach(0..<fanCount, id: \.self) { i in
+                            let rpm = Double(fanSpeeds[i])
+                            let maxRPM = i < fanMaxSpeeds.count ? Double(fanMaxSpeeds[i]) : systemMonitor.fanInfo.maxRPM
+                            let label = fanCount == 1 ? "Fan Speed" : "Fan \(i + 1)"
+
+                            HStack {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "fan")
+                                        .foregroundColor(.blue)
+                                        .font(.subheadline)
+                                    Text(label)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.0f RPM", rpm))
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .monospacedDigit()
+                                    .foregroundColor(fanSpeedColor(for: rpm))
+                            }
+
+                            if i < fanCount - 1 {
+                                Divider()
+                            }
+                        }
+                    } else {
+                        // Estimated fallback — single row
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "fan")
+                                    .foregroundColor(.blue)
+                                    .font(.subheadline)
+                                Text("Fan Speed")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
+                                    .font(.title3)
+                                    .fontWeight(.semibold)
+                                    .monospacedDigit()
+                                    .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
                                 Text("Estimated")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
                         }
+
                     }
-					
+
                     HStack {
                         HStack(spacing: 4) {
                             Image(systemName: getThermalPressureIcon(for: systemMonitor.fanInfo.thermalState))
@@ -1199,30 +1230,11 @@ struct TabbedStatsView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        
                         Spacer()
-                        
                         Text(systemMonitor.fanInfo.thermalPressure)
                             .font(.caption)
                             .fontWeight(.semibold)
                             .foregroundColor(getThermalPressureColor(for: systemMonitor.fanInfo.thermalState))
-                    }
-					
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Fan Activity")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(String(format: "%.0f%% of max", (systemMonitor.fanInfo.rpm / systemMonitor.fanInfo.maxRPM) * 100))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        ProgressView(value: systemMonitor.fanInfo.rpm, total: systemMonitor.fanInfo.maxRPM)
-                            .tint(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
-                            .scaleEffect(y: 1.2)
                     }
 					
                     if !systemMonitor.cpuTemperatureHistory.isEmpty {
