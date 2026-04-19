@@ -314,7 +314,7 @@ class SystemMonitor: ObservableObject {
     private var lastSystemInfoUpdate: Date = Date.distantPast
     private var networkProcessUpdateCounter: Int = 0
     private var cachedNetworkProcesses: [ProcessNetworkInfo] = []
-    private var networkProcessTimer: Timer?
+    private var cachedNettopPath: String? = nil  // resolved once; avoids repeated FileManager lookups
     
     // Add caching for power consumption to reduce macmon calls
     private var cachedPowerConsumption: PowerConsumptionInfo?
@@ -359,8 +359,7 @@ class SystemMonitor: ObservableObject {
             self?.updatePowerConsumption()
         }
         
-        // Update network processes with separate timer
-        startNetworkProcessUpdates()
+        // Network processes are updated by the counter inside updateStats()
     }
     
     func stopMonitoring() {
@@ -368,7 +367,7 @@ class SystemMonitor: ObservableObject {
         timer = nil
         powerTimer?.invalidate()
         powerTimer = nil
-        stopNetworkProcessUpdates()
+
     }
     
     // Reset UPS power state tracking (useful when restarting monitoring)
@@ -781,17 +780,20 @@ class SystemMonitor: ObservableObject {
                 self.updateCPUTemperatureHistory(with: cpuTemp)
                 self.updateNetworkHistory(upload: network.upload, download: network.download)
 
-                self.cpuUsage = cpu
-                self.cpuTemperature = cpuTemp
-                self.fanInfo = fan
-                self.memoryUsage = memory
-                self.diskUsage = disk
-                self.networkUsage = network
+                // Only publish values that actually changed to suppress unnecessary SwiftUI redraws.
+                if abs(self.cpuUsage - cpu) > 0.1 { self.cpuUsage = cpu }
+                if abs(self.cpuTemperature - cpuTemp) > 0.5 { self.cpuTemperature = cpuTemp }
+                if self.fanInfo.speeds != fan.speeds || abs(self.fanInfo.rpm - fan.rpm) > 50 { self.fanInfo = fan }
+                if abs(self.memoryUsage.used - memory.used) > 50_000_000 { self.memoryUsage = memory }
+                if abs(self.diskUsage.free - disk.free) > 100_000_000 { self.diskUsage = disk }
+                self.networkUsage = network   // always assign — fluctuates every tick when active
                 self.topProcesses = processes
                 self.topMemoryProcesses = memoryProcesses
                 self.topNetworkProcesses = networkProcesses
-                self.upsInfo = ups
-                self.batteryInfo = battery
+                if abs(self.batteryInfo.chargeLevel - battery.chargeLevel) > 0.5
+                    || self.batteryInfo.isCharging != battery.isCharging { self.batteryInfo = battery }
+                if self.upsInfo.powerSource != ups.powerSource
+                    || abs(self.upsInfo.chargeLevel - ups.chargeLevel) > 0.5 { self.upsInfo = ups }
                 self.systemInfo = systemInfo
                 self.initialDataLoaded = true
 
@@ -804,40 +806,10 @@ class SystemMonitor: ObservableObject {
     private func updatePowerConsumption() {
         DispatchQueue.global(qos: .userInitiated).async {
             let powerConsumption = self.getCurrentPowerConsumption()
-            
             DispatchQueue.main.async {
-                self.powerConsumptionInfo = powerConsumption
-            }
-        }
-    }
-    
-    private func startNetworkProcessUpdates() {
-        networkProcessTimer = Timer.scheduledTimer(withTimeInterval: Constants.networkProcessUpdateInterval, repeats: true) { [weak self] _ in
-            self?.updateNetworkProcesses()
-        }
-    }
-    
-    private func stopNetworkProcessUpdates() {
-        networkProcessTimer?.invalidate()
-        networkProcessTimer = nil
-    }
-    
-    func updateNetworkProcesses() {
-        // Implement throttling logic
-        networkProcessUpdateCounter += 1
-        
-        if networkProcessUpdateCounter >= 10 {
-            networkProcessUpdateCounter = 0
-            // Refresh the cached network processes
-            cachedNetworkProcesses = getTopNetworkProcesses(count: Constants.processCountThreshold)
-            return
-        }
-        
-        DispatchQueue.global(qos: .userInitiated).async {
-            let networkProcesses = self.cachedNetworkProcesses
-            
-            DispatchQueue.main.async {
-                self.topNetworkProcesses = networkProcesses
+                if abs(self.powerConsumptionInfo.totalSystemPower - powerConsumption.totalSystemPower) > 0.5 {
+                    self.powerConsumptionInfo = powerConsumption
+                }
             }
         }
     }
@@ -1207,50 +1179,29 @@ class SystemMonitor: ObservableObject {
     }
     
     private func getNettopData() -> String {
-        let possiblePaths = [
-            "/usr/bin/nettop",
-            "/usr/sbin/nettop",
-            "/bin/nettop",
-            "/usr/local/bin/nettop",
-            "/opt/homebrew/bin/nettop",
-            "/opt/local/bin/nettop"
-        ]
-        
-        for path in possiblePaths {
-            if FileManager.default.fileExists(atPath: path) {
-                #if DEBUG
-                print(" Found nettop at: \(path)")
-                #endif
-
-                let nettopArgs = ["-P", "-L", "1"]
-                #if DEBUG
-                print(" Running: \(path) \(nettopArgs.joined(separator: " "))")
-                #endif
-
-                if let output = executeCommand(path, nettopArgs) {
-                    if !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        #if DEBUG
-                        print(" nettop succeeded!")
-                        print(" First 500 chars: \(String(output.prefix(500)))")
-                        #endif
-                        return output
-                    } else {
-                        #if DEBUG
-                        print(" nettop returned empty output")
-                        #endif
-                    }
-                } else {
-                    #if DEBUG
-                    print(" nettop execution failed")
-                    #endif
-                }
-            }
+        // Resolve the nettop binary path once; avoids 6 FileManager.fileExists calls on every tick.
+        if cachedNettopPath == nil {
+            let possiblePaths = [
+                "/usr/bin/nettop",
+                "/usr/sbin/nettop",
+                "/bin/nettop",
+                "/usr/local/bin/nettop",
+                "/opt/homebrew/bin/nettop",
+                "/opt/local/bin/nettop"
+            ]
+            cachedNettopPath = possiblePaths.first { FileManager.default.fileExists(atPath: $0) }
+            #if DEBUG
+            if let found = cachedNettopPath { print(" nettop resolved to: \(found)") }
+            else { print(" nettop not found in any standard location") }
+            #endif
         }
 
-        #if DEBUG
-        print(" nettop not found in any standard location")
-        #endif
-        return ""
+        guard let path = cachedNettopPath,
+              let output = executeCommand(path, ["-P", "-L", "1"]),
+              !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ""
+        }
+        return output
     }
     
     private func parseNettopOutput(_ output: String, maxCount: Int) -> [ProcessNetworkInfo] {
