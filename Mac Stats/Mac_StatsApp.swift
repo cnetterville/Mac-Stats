@@ -119,6 +119,7 @@ struct MenuBarDropdownView: View {
         case memory = "Memory"
         case network = "Network"
         case disk = "Disk"
+        case power = "Power"
         
         var icon: String {
             switch self {
@@ -126,6 +127,7 @@ struct MenuBarDropdownView: View {
             case .memory: return "memorychip.fill"
             case .network: return "antenna.radiowaves.left.and.right"
             case .disk: return "internaldrive.fill"
+            case .power: return "bolt.fill"
             }
         }
         
@@ -135,6 +137,7 @@ struct MenuBarDropdownView: View {
             case .memory: return .purple
             case .network: return .green
             case .disk: return .mint
+            case .power: return .yellow
             }
         }
     }
@@ -213,6 +216,9 @@ struct MenuBarDropdownView: View {
                                 .environmentObject(systemMonitor)
                         case .disk:
                             DiskSectionView()
+                                .environmentObject(systemMonitor)
+                        case .power:
+                            PowerSectionView()
                                 .environmentObject(systemMonitor)
                         }
                     }
@@ -1649,6 +1655,255 @@ struct CPUSparklineView: View {
             path.addLine(to: CGPoint(x: size.width, y: stepY))
             path.closeSubpath()
         }
+    }
+}
+
+// Power Section
+struct PowerSectionView: View {
+    @EnvironmentObject var systemMonitor: SystemMonitor
+
+    private var watts: Double { systemMonitor.powerConsumptionInfo.totalSystemPower }
+    private var cpuWatts: Double { systemMonitor.powerConsumptionInfo.cpuPower }
+    private var gpuWatts: Double { systemMonitor.powerConsumptionInfo.gpuPower }
+    private var isEstimate: Bool { systemMonitor.powerConsumptionInfo.isEstimate }
+    private var temp: Double { systemMonitor.cpuTemperature }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Main power card
+            VStack(spacing: 0) {
+                HStack(alignment: .top, spacing: 16) {
+                    // Watts gauge — ring scaled to 100 W
+                    ZStack {
+                        Circle()
+                            .stroke(Color.gray.opacity(0.2), lineWidth: 8)
+                            .frame(width: 90, height: 90)
+                        Circle()
+                            .trim(from: 0, to: min(watts / 100, 1))
+                            .stroke(powerColor(watts).gradient,
+                                    style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                            .frame(width: 90, height: 90)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeInOut(duration: 0.5), value: watts)
+                        VStack(spacing: 1) {
+                            Text(watts >= 100
+                                 ? String(format: "%.0f", watts)
+                                 : String(format: "%.1f", watts))
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(powerColor(watts))
+                                .minimumScaleFactor(0.7)
+                                .lineLimit(1)
+                            Text(isEstimate ? "W est." : "W")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    // CPU / GPU breakdown badges
+                    VStack(alignment: .leading, spacing: 8) {
+                        if cpuWatts > 0 {
+                            powerBadge(label: "CPU", value: cpuWatts, icon: "cpu.fill", color: .orange)
+                        }
+                        if gpuWatts > 0 {
+                            powerBadge(label: "GPU", value: gpuWatts, icon: "display", color: .blue)
+                        }
+                        if cpuWatts == 0 && gpuWatts == 0 {
+                            powerBadge(label: "System", value: watts, icon: "power", color: .yellow)
+                        }
+                    }
+
+                    Spacer()
+                }
+                .padding(20)
+
+                // Temperature + fan row
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "thermometer.medium")
+                            .font(.system(size: 11))
+                            .foregroundColor(tempColor(temp))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Temp")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.0f°C / %.0f°F",
+                                        temp, TemperatureMonitor.celsiusToFahrenheit(temp)))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(tempColor(temp))
+                        }
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "fan.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.blue)
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text("Fan")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                            let rpm = systemMonitor.fanInfo.speeds.first.map { Double($0) }
+                                        ?? systemMonitor.fanInfo.rpm
+                            Text(String(format: "%.0f RPM", rpm))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.blue)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+
+            // Battery card
+            if systemMonitor.batteryInfo.present {
+                VStack(spacing: 0) {
+                    HStack {
+                        Image(systemName: systemMonitor.batteryInfo.isCharging
+                              ? "battery.100.bolt" : "battery.75")
+                            .font(.system(size: 14))
+                            .foregroundColor(batteryColor(systemMonitor.batteryInfo.chargeLevel))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Battery")
+                                .font(.system(size: 11, weight: .semibold))
+                            Text(systemMonitor.batteryInfo.isCharging ? "Charging" : "On Battery")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "%.0f%%", systemMonitor.batteryInfo.chargeLevel))
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundColor(batteryColor(systemMonitor.batteryInfo.chargeLevel))
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+
+                    ProgressView(value: systemMonitor.batteryInfo.chargeLevel, total: 100)
+                        .tint(batteryColor(systemMonitor.batteryInfo.chargeLevel))
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, systemMonitor.batteryInfo.timeRemaining > 0 ? 8 : 16)
+
+                    if systemMonitor.batteryInfo.timeRemaining > 0 {
+                        HStack {
+                            Text(systemMonitor.batteryInfo.isCharging ? "Time to Full" : "Time Remaining")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text(formatMinutes(systemMonitor.batteryInfo.timeRemaining))
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 14)
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            // Adapter card
+            let adapter = systemMonitor.powerConsumptionInfo.adapterInfo
+            if adapter.isConnected && adapter.wattage > 0 {
+                HStack(spacing: 12) {
+                    Image(systemName: "powerplug.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.green.gradient)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Power Adapter")
+                            .font(.system(size: 11, weight: .semibold))
+                        let label = adapter.model.isEmpty || adapter.model == "Unknown"
+                            ? "\(adapter.wattage)W \(adapter.type)"
+                            : adapter.model
+                        Text(label)
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text("\(adapter.wattage)W")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(.green)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            Spacer().frame(height: 16)
+        }
+    }
+
+    @ViewBuilder
+    private func powerBadge(label: String, value: Double, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(color.gradient)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text(String(format: "%.1f W", value))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(color)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color(NSColor.controlBackgroundColor).opacity(0.5)))
+    }
+
+    private func powerColor(_ w: Double) -> Color {
+        switch w {
+        case 0..<20: return .green
+        case 20..<50: return .yellow
+        case 50..<80: return .orange
+        default: return .red
+        }
+    }
+
+    private func tempColor(_ c: Double) -> Color {
+        switch c {
+        case 0..<60: return .blue
+        case 60..<80: return .green
+        case 80..<95: return .orange
+        default: return .red
+        }
+    }
+
+    private func batteryColor(_ pct: Double) -> Color {
+        switch pct {
+        case 0..<20: return .red
+        case 20..<40: return .orange
+        default: return .green
+        }
+    }
+
+    private func formatMinutes(_ minutes: Double) -> String {
+        let m = Int(minutes)
+        if m <= 0 { return "--" }
+        return m < 60 ? "\(m)m" : "\(m / 60)h \(m % 60)m"
     }
 }
 

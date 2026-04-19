@@ -526,14 +526,16 @@ struct TabbedStatsView: View {
     
     private var powerContent: some View {
         VStack(spacing: 12) {
-            if preferences.showPowerConsumption {
-                fullPowerConsumptionCard
-            }
-            
+            // Always show power consumption when on the Power tab — don't require the preference flag
+            fullPowerConsumptionCard
+
+            // Temperature and cooling are thermally inseparable from power
+            temperatureCard
+
             if systemMonitor.batteryInfo.present {
                 fullBatteryCard
             }
-            
+
             if systemMonitor.upsInfo.present {
                 fullUPSCard
             }
