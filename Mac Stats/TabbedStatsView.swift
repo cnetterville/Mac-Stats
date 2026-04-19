@@ -890,7 +890,7 @@ struct TabbedStatsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             Image(systemName: "power")
-                                .foregroundColor(.yellow)
+                                .foregroundColor(systemPowerColor(for: systemMonitor.powerConsumptionInfo.totalSystemPower))
                                 .font(.subheadline)
                             Text("Total System")
                                 .font(.subheadline)
@@ -900,7 +900,7 @@ struct TabbedStatsView: View {
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
-                                .foregroundColor(.yellow)
+                                .foregroundColor(systemPowerColor(for: systemMonitor.powerConsumptionInfo.totalSystemPower))
                         }
 
                         if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
@@ -1150,7 +1150,7 @@ struct TabbedStatsView: View {
 			
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Text("Current Temperature")
+                        Text("Avg. CPU Temperature")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Spacer()
@@ -1785,21 +1785,12 @@ struct TabbedStatsView: View {
         }
     }
     
-    private func temperatureColor(for temperatureCelsius: Double) -> Color {
-        switch temperatureCelsius {
-        case 0..<40:
-            return .blue
-        case 40..<65:
-            return .green
-        case 65..<80:
-            return .yellow
-        case 80..<95:
-            return .orange
-        case 95...150:
-            return .red
-        default:
-            return .gray
-        }
+    private func temperatureColor(for celsius: Double) -> Color {
+        systemMonitor.thermalProfile.temperatureColor(celsius)
+    }
+
+    private func systemPowerColor(for watts: Double) -> Color {
+        systemMonitor.thermalProfile.powerColor(watts)
     }
     
     private func getThermalStateColor() -> Color {

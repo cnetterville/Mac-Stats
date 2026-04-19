@@ -2251,3 +2251,114 @@ class SystemMonitor: ObservableObject {
         stopExternalIPRefresh()
     }
 }
+
+// MARK: - Model-aware thermal thresholds
+
+/// Per-model temperature and power warning thresholds.
+/// Higher-end / desktop Macs run hotter and draw more power by design, so
+/// a single fixed set of thresholds would produce false warnings on a Mac Pro
+/// while under-warning on a fanless MacBook Air.
+struct MacThermalProfile {
+    let tempYellow: Double    // °C — caution
+    let tempOrange: Double    // °C — hot
+    let tempRed: Double       // °C — critical
+    let powerYellow: Double   // W  — caution
+    let powerOrange: Double   // W  — high
+    let powerRed: Double      // W  — near limit
+
+    func temperatureColor(_ celsius: Double) -> Color {
+        switch celsius {
+        case 0..<40:                   return .blue
+        case 40..<tempYellow:          return .green
+        case tempYellow..<tempOrange:  return .yellow
+        case tempOrange..<tempRed:     return .orange
+        case tempRed...:               return .red
+        default:                       return .gray
+        }
+    }
+
+    /// Menu-bar variant: uses `.white` instead of `.green` so text stays
+    /// readable on the dark menu-bar background when everything is normal.
+    func menuBarTemperatureColor(_ celsius: Double) -> Color {
+        switch celsius {
+        case 0..<tempYellow:           return .white
+        case tempYellow..<tempOrange:  return .yellow
+        case tempOrange..<tempRed:     return .orange
+        case tempRed...:               return .red
+        default:                       return .white
+        }
+    }
+
+    func powerColor(_ watts: Double) -> Color {
+        switch watts {
+        case 0..<powerYellow:            return .green
+        case powerYellow..<powerOrange:  return .yellow
+        case powerOrange..<powerRed:     return .orange
+        case powerRed...:                return .red
+        default:                         return .gray
+        }
+    }
+
+    /// Menu-bar variant: uses `.white` at low wattages.
+    func menuBarPowerColor(_ watts: Double) -> Color {
+        switch watts {
+        case 0..<powerYellow:            return .white
+        case powerYellow..<powerOrange:  return .yellow
+        case powerOrange..<powerRed:     return .orange
+        case powerRed...:                return .red
+        default:                         return .white
+        }
+    }
+}
+
+extension SystemMonitor {
+    /// Returns the thermal/power colour thresholds appropriate for this Mac model.
+    var thermalProfile: MacThermalProfile {
+        let model   = systemInfo.modelName.lowercased()
+        let chip    = systemInfo.chipInfo.lowercased()
+        let isUltra = chip.contains("ultra")
+        let isMax   = chip.contains("max")
+
+        if model.contains("macbook air") || model.hasPrefix("macbookair") {
+            // Fanless — throttles earlier, low sustained power envelope
+            return MacThermalProfile(tempYellow: 65, tempOrange: 78, tempRed: 88,
+                                     powerYellow: 12, powerOrange: 22, powerRed: 32)
+
+        } else if model.contains("macbook pro") || model.hasPrefix("macbookpro") {
+            if isMax || isUltra {
+                return MacThermalProfile(tempYellow: 75, tempOrange: 90, tempRed: 100,
+                                         powerYellow: 50, powerOrange: 80, powerRed: 110)
+            } else {
+                return MacThermalProfile(tempYellow: 72, tempOrange: 87, tempRed: 97,
+                                         powerYellow: 30, powerOrange: 55, powerRed: 80)
+            }
+
+        } else if model.contains("mac studio") || model.hasPrefix("macstudio") {
+            if isUltra {
+                return MacThermalProfile(tempYellow: 82, tempOrange: 97, tempRed: 107,
+                                         powerYellow: 120, powerOrange: 190, powerRed: 260)
+            } else {
+                return MacThermalProfile(tempYellow: 78, tempOrange: 93, tempRed: 103,
+                                         powerYellow: 80, powerOrange: 130, powerRed: 180)
+            }
+
+        } else if model.contains("mac pro") || model.hasPrefix("macpro") {
+            // Mac Pro — designed for extreme sustained workloads
+            return MacThermalProfile(tempYellow: 85, tempOrange: 100, tempRed: 110,
+                                     powerYellow: 150, powerOrange: 250, powerRed: 350)
+
+        } else if model.contains("mac mini") || model.hasPrefix("macmini") {
+            return MacThermalProfile(tempYellow: 70, tempOrange: 85, tempRed: 95,
+                                     powerYellow: 25, powerOrange: 45, powerRed: 65)
+
+        } else if model.contains("imac") {
+            return MacThermalProfile(tempYellow: 75, tempOrange: 90, tempRed: 100,
+                                     powerYellow: 50, powerOrange: 80, powerRed: 110)
+
+        } else {
+            // Unknown model — conservative mid-range defaults
+            return MacThermalProfile(tempYellow: 70, tempOrange: 85, tempRed: 95,
+                                     powerYellow: 30, powerOrange: 60, powerRed: 100)
+        }
+    }
+}

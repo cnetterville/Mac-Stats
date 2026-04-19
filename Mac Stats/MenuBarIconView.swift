@@ -249,18 +249,10 @@ struct MenuBarIconView: View {
     }
 
     private func powerColor(for watts: Double) -> Color {
-        switch watts {
-        case 0..<30:  return .white
-        case 30..<80: return .yellow
-        default:      return .red
-        }
+        systemMonitor.thermalProfile.menuBarPowerColor(watts)
     }
 
     private func tempColor(for celsius: Double) -> Color {
-        switch celsius {
-        case 0..<60:  return .white
-        case 60..<80: return .yellow
-        default:      return .red
-        }
+        systemMonitor.thermalProfile.menuBarTemperatureColor(celsius)
     }
 }

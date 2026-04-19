@@ -1598,21 +1598,8 @@ struct CardBasedStatsView: View {
         }
     }
     
-    private func temperatureColor(for temperatureCelsius: Double) -> Color {
-        switch temperatureCelsius {
-        case 0..<40:
-            return .blue
-        case 40..<65:
-            return .green
-        case 65..<80:
-            return .yellow
-        case 80..<95:
-            return .orange
-        case 95...150:
-            return .red
-        default:
-            return .gray
-        }
+    private func temperatureColor(for celsius: Double) -> Color {
+        systemMonitor.thermalProfile.temperatureColor(celsius)
     }
     
     private func showMacmonInstallation() {

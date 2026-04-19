@@ -447,12 +447,7 @@ struct CPUSectionView: View {
     }
     
     private func temperatureColor(_ temp: Double) -> Color {
-        switch temp {
-        case 0..<60: return .blue
-        case 60..<80: return .green
-        case 80..<95: return .orange
-        default: return .red
-        }
+        systemMonitor.thermalProfile.temperatureColor(temp)
     }
 }
 
@@ -1875,21 +1870,11 @@ struct PowerSectionView: View {
     }
 
     private func powerColor(_ w: Double) -> Color {
-        switch w {
-        case 0..<20: return .green
-        case 20..<50: return .yellow
-        case 50..<80: return .orange
-        default: return .red
-        }
+        systemMonitor.thermalProfile.powerColor(w)
     }
 
     private func tempColor(_ c: Double) -> Color {
-        switch c {
-        case 0..<60: return .blue
-        case 60..<80: return .green
-        case 80..<95: return .orange
-        default: return .red
-        }
+        systemMonitor.thermalProfile.temperatureColor(c)
     }
 
     private func batteryColor(_ pct: Double) -> Color {
