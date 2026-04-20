@@ -37,6 +37,16 @@ struct ProcessNetworkInfo: Identifiable {
     }
 }
 
+// Struct to hold per-process disk I/O information
+struct ProcessDiskInfo: Identifiable {
+    let id = UUID()
+    let pid: Int32
+    let name: String
+    let bytesRead: Double     // bytes/sec
+    let bytesWritten: Double  // bytes/sec
+    var totalIO: Double { bytesRead + bytesWritten }
+}
+
 // Struct to hold UPS information
 struct UPSInfo {
     let name: String
@@ -269,6 +279,7 @@ class SystemMonitor: ObservableObject {
         static let preferredWiFiInterface = "en2"
         static let systemInfoCacheInterval: TimeInterval = 300.0
         static let networkProcessUpdateInterval: TimeInterval = 5.0
+        static let diskProcessUpdateInterval: TimeInterval = 5.0
         
         // Add caching to prevent excessive macmon calls
         static let powerConsumptionCacheInterval: TimeInterval = 15.0 // Cache power data for 15 seconds minimum
@@ -285,7 +296,8 @@ class SystemMonitor: ObservableObject {
     @Published var networkInterfaces: [String] = []
     @Published var topProcesses: [SystemProcessInfo] = []
     @Published var topMemoryProcesses: [SystemProcessInfo] = []
-    @Published var topNetworkProcesses: [ProcessNetworkInfo] = [] // Add process network data
+    @Published var topNetworkProcesses: [ProcessNetworkInfo] = []
+    @Published var topDiskProcesses: [ProcessDiskInfo] = []
     @Published var upsInfo: UPSInfo = UPSInfo() // UPS information
     @Published var batteryInfo: BatteryInfo = BatteryInfo() // Battery information
     @Published var systemInfo: SystemInfo = SystemInfo() // System information
@@ -317,6 +329,9 @@ class SystemMonitor: ObservableObject {
     private var lastSystemInfoUpdate: Date = Date.distantPast
     private var networkProcessUpdateCounter: Int = 0
     private var cachedNetworkProcesses: [ProcessNetworkInfo] = []
+    private var diskProcessUpdateCounter: Int = 0
+    private var cachedDiskProcesses: [ProcessDiskInfo] = []
+    private var previousDiskIO: [Int32: (read: UInt64, written: UInt64, time: Date)] = [:]
     private var cachedNettopPath: String? = nil  // resolved once; avoids repeated FileManager lookups
     
     // Add caching for power consumption to reduce macmon calls
@@ -505,6 +520,8 @@ class SystemMonitor: ObservableObject {
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async {
             networkProcesses = self.getTopNetworkProcesses(count: Constants.processCountThreshold)
+            // Prime the disk I/O cache on first load so next tick has a baseline
+            _ = self.getTopDiskProcesses(count: Constants.processCountThreshold)
             group.leave()
         }
         
@@ -781,6 +798,17 @@ class SystemMonitor: ObservableObject {
                 networkProcesses = self.cachedNetworkProcesses
             }
 
+            // Disk process list — same pattern as network processes
+            self.diskProcessUpdateCounter += 1
+            let diskProcesses: [ProcessDiskInfo]
+            if self.diskProcessUpdateCounter >= Int(Constants.diskProcessUpdateInterval / self.updateInterval) {
+                diskProcesses = self.getTopDiskProcesses(count: Constants.processCountThreshold)
+                self.cachedDiskProcesses = diskProcesses
+                self.diskProcessUpdateCounter = 0
+            } else {
+                diskProcesses = self.cachedDiskProcesses
+            }
+
             DispatchQueue.main.async {
                 self.updateCPUHistory(with: cpu)
                 self.updateCPUTemperatureHistory(with: cpuTemp)
@@ -799,6 +827,7 @@ class SystemMonitor: ObservableObject {
                 self.topProcesses = processes
                 self.topMemoryProcesses = memoryProcesses
                 self.topNetworkProcesses = networkProcesses
+                self.topDiskProcesses = diskProcesses
                 if abs(self.batteryInfo.chargeLevel - battery.chargeLevel) > 0.5
                     || self.batteryInfo.isCharging != battery.isCharging { self.batteryInfo = battery }
                 if self.upsInfo.powerSource != ups.powerSource
@@ -1197,6 +1226,72 @@ class SystemMonitor: ObservableObject {
         )
     }
     
+    // MARK: - Disk Process Monitoring
+
+    private func getTopDiskProcesses(count: Int) -> [ProcessDiskInfo] {
+        let now = Date()
+
+        // Get all live PIDs
+        let byteCount = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+        guard byteCount > 0 else { return cachedDiskProcesses }
+
+        var pidBuf = [pid_t](repeating: 0, count: Int(byteCount) / MemoryLayout<pid_t>.size + 1)
+        let actualBytes = pidBuf.withUnsafeMutableBytes { ptr -> Int32 in
+            proc_listpids(UInt32(PROC_ALL_PIDS), 0, ptr.baseAddress, Int32(ptr.count))
+        }
+        guard actualBytes > 0 else { return cachedDiskProcesses }
+
+        let pidCount = Int(actualBytes) / MemoryLayout<pid_t>.size
+        let pids = pidBuf.prefix(pidCount).filter { $0 > 0 }
+
+        var results: [ProcessDiskInfo] = []
+        var newCache: [Int32: (read: UInt64, written: UInt64, time: Date)] = [:]
+        newCache.reserveCapacity(pids.count)
+
+        for pid in pids {
+            var info = rusage_info_v4()
+            // C idiom: proc_pid_rusage(pid, flavor, (rusage_info_t *)&info)
+            // The kernel treats 'buffer' as a plain void* destination and copies
+            // the rusage struct there — it does NOT dereference it as void**.
+            // So we must pass &info bitcast to UnsafeMutablePointer<rusage_info_t?>,
+            // not the address of a separate pointer variable (which overflows the stack).
+            let ret = withUnsafeMutablePointer(to: &info) { ptr -> Int32 in
+                ptr.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { reboundPtr in
+                    proc_pid_rusage(pid, RUSAGE_INFO_V4, reboundPtr)
+                }
+            }
+            guard ret == 0 else { continue }
+
+            let curRead  = info.ri_diskio_bytesread
+            let curWrite = info.ri_diskio_byteswritten
+            newCache[pid] = (read: curRead, written: curWrite, time: now)
+
+            guard let prev = previousDiskIO[pid] else { continue }
+            let elapsed = now.timeIntervalSince(prev.time)
+            guard elapsed > 0.1 else { continue }
+
+            let readDelta  = curRead  >= prev.read    ? curRead  - prev.read    : 0
+            let writeDelta = curWrite >= prev.written ? curWrite - prev.written : 0
+            let readRate   = Double(readDelta)  / elapsed
+            let writeRate  = Double(writeDelta) / elapsed
+
+            // Skip processes with trivially low I/O (< 1 KB/s total)
+            guard readRate + writeRate >= 1024 else { continue }
+
+            var nameBuf = [CChar](repeating: 0, count: 1024)
+            proc_name(pid, &nameBuf, UInt32(nameBuf.count))
+            let name = String(cString: nameBuf)
+            guard !name.isEmpty else { continue }
+
+            results.append(ProcessDiskInfo(pid: pid, name: name,
+                                           bytesRead: readRate,
+                                           bytesWritten: writeRate))
+        }
+
+        previousDiskIO = newCache
+        return Array(results.sorted { $0.totalIO > $1.totalIO }.prefix(count))
+    }
+
     // MARK: - Process Network Monitoring Methods
     
     private func getTopNetworkProcesses(count: Int) -> [ProcessNetworkInfo] {

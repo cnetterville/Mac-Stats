@@ -1327,6 +1327,46 @@ struct DiskSectionView: View {
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
+            
+            // Top Disk Processes Section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: "list.bullet.rectangle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.mint)
+                    Text("Top Disk Processes")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                
+                Divider()
+                    .padding(.horizontal, 16)
+                
+                if systemMonitor.topDiskProcesses.isEmpty {
+                    Text("No significant disk activity")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 20)
+                } else {
+                    ForEach(Array(systemMonitor.topDiskProcesses.prefix(5).enumerated()), id: \.element.id) { index, process in
+                        DiskProcessRowView(process: process, rank: index + 1)
+                    }
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
             .padding(.bottom, 16)
         }
     }
@@ -1345,6 +1385,97 @@ struct DiskSectionView: View {
         } else {
             return String(format: "%.0f GB", gb)
         }
+    }
+}
+
+// Disk Process Row View
+struct DiskProcessRowView: View {
+    let process: ProcessDiskInfo
+    let rank: Int
+    
+    private var rankColor: Color {
+        switch rank {
+        case 1: return .yellow
+        case 2: return .gray
+        case 3: return .orange
+        default: return .mint
+        }
+    }
+    
+    private var usageWidth: CGFloat {
+        // Scale bar relative to 10 MB/s max
+        CGFloat(min(process.totalIO / (10 * 1_048_576), 1.0))
+    }
+    
+    private func formatRate(_ bytesPerSec: Double) -> String {
+        if bytesPerSec >= 1_048_576 {
+            return String(format: "%.1fM", bytesPerSec / 1_048_576)
+        } else if bytesPerSec >= 1024 {
+            return String(format: "%.0fK", bytesPerSec / 1024)
+        } else {
+            return "0K"
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Rank badge
+            ZStack {
+                Circle()
+                    .fill(rankColor.opacity(0.15))
+                    .frame(width: 24, height: 24)
+                Text("\(rank)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(rankColor)
+            }
+            
+            // Process info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(process.name)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .foregroundColor(.primary)
+                
+                HStack(spacing: 6) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 7))
+                        Text(formatRate(process.bytesRead))
+                            .font(.system(size: 8, design: .monospaced))
+                    }
+                    .foregroundColor(.blue)
+                    
+                    HStack(spacing: 2) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 7))
+                        Text(formatRate(process.bytesWritten))
+                            .font(.system(size: 8, design: .monospaced))
+                    }
+                    .foregroundColor(.orange)
+                }
+            }
+            
+            Spacer()
+            
+            // Usage bar
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 50, height: 6)
+                
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.mint)
+                    .frame(width: 50 * usageWidth, height: 6)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(NSColor.controlBackgroundColor).opacity(rank <= 3 ? 0.15 : 0))
+        )
+        .padding(.horizontal, 4)
+        .drawingGroup()
     }
 }
 

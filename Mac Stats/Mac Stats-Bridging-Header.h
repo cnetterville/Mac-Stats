@@ -8,6 +8,6 @@
 #ifndef Mac_Stats_Bridging_Header_h
 #define Mac_Stats_Bridging_Header_h
 
-
+#include <libproc.h>
 
 #endif /* Mac_Stats_Bridging_Header_h */
