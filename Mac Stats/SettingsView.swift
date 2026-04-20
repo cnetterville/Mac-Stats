@@ -84,6 +84,7 @@ struct SettingsView: View {
                     Toggle("Show Uptime in Menu Bar", isOn: $preferences.showMenuBarUptime)
                     Toggle("Show Power in Menu Bar", isOn: $preferences.showMenuBarPower)
                     Toggle("Show CPU Temp in Menu Bar", isOn: $preferences.showMenuBarCPUTemp)
+                    Toggle("Show Fan Speed in Menu Bar", isOn: $preferences.showMenuBarFanSpeed)
                 }
                 
                 Section("Update Interval") {

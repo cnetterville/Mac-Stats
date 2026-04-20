@@ -38,7 +38,8 @@ struct MenuBarIconView: View {
                (preferences.showNetwork && preferences.showMenuBarNetwork) ||
                preferences.showMenuBarUptime ||
                preferences.showMenuBarPower ||
-               preferences.showMenuBarCPUTemp
+               preferences.showMenuBarCPUTemp ||
+               preferences.showMenuBarFanSpeed
     }
     
     private func enabledStatsView() -> some View {
@@ -52,6 +53,7 @@ struct MenuBarIconView: View {
         if preferences.showMenuBarUptime                            { items.append(AnyView(uptimeStatView())) }
         if preferences.showMenuBarPower                             { items.append(AnyView(powerStatView())) }
         if preferences.showMenuBarCPUTemp                           { items.append(AnyView(cpuTempStatView())) }
+        if preferences.showMenuBarFanSpeed                          { items.append(AnyView(fanStatView())) }
 
         return HStack(alignment: .center, spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
@@ -243,6 +245,20 @@ struct MenuBarIconView: View {
             Text(String(format: "%.0f\(unit)", value))
                 .font(dataFont)
                 .foregroundColor(tempColor(for: temp))
+        }
+        .frame(width: 42)
+        .monospacedDigit()
+    }
+
+    @ViewBuilder
+    private func fanStatView() -> some View {
+        let fan = systemMonitor.fanInfo
+        let rpm = fan.rpm
+        VStack(alignment: .center, spacing: compactSpacing) {
+            Text("FAN")
+                .font(compactFont)
+            Text(rpm > 0 ? String(format: "%.0f", rpm) : "---")
+                .font(dataFont)
         }
         .frame(width: 42)
         .monospacedDigit()

@@ -26,8 +26,9 @@ func readSMCSystemPower() -> Double? {
 /// Reads average CPU temperature (°C) directly from SMC P-core and E-core keys.
 /// Returns nil if no recognised temperature keys respond on this model.
 func readSMCCPUTemperature() -> Double? {
-    // Apple Silicon P-core and E-core die temperature keys (type sp78).
-    // sp78: 2 bytes big-endian signed fixed-point, value = (Int16 / 256.0)
+    // Apple Silicon P-core and E-core die temperature keys.
+    // On Apple Silicon these return type 'flt' (IEEE 754 float, little-endian).
+    // Older Intel Macs may use type 'sp78' (2-byte big-endian signed fixed-point).
     let keys = [
         "Tp01", "Tp05", "Tp09", "Tp0D", "Tp0X", "Tp0b", "Tp0f", "Tp0j", // P-cores
         "Te05", "Te09"                                                       // E-cores
@@ -35,10 +36,21 @@ func readSMCCPUTemperature() -> Double? {
     return withSMCConnection { conn in
         var temps: [Double] = []
         for key in keys {
-            guard let bytes = smcRead(conn, key: key, size: 2) else { continue }
-            let raw = Int16(bitPattern: (UInt16(bytes[0]) << 8) | UInt16(bytes[1]))
-            let celsius = Double(raw) / 256.0
-            if celsius >= 30 && celsius < 120 { temps.append(celsius) }
+            guard let bytes = smcRead(conn, key: key, size: 4) else { continue }
+            let celsius: Double
+            if bytes.count >= 4 {
+                // Decode as IEEE 754 float (little-endian, Apple Silicon native byte order)
+                var value: Float32 = 0
+                withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                celsius = Double(value)
+            } else if bytes.count >= 2 {
+                // sp78: 2-byte big-endian signed fixed-point, value = (Int16 / 256.0)
+                let raw = Int16(bitPattern: (UInt16(bytes[0]) << 8) | UInt16(bytes[1]))
+                celsius = Double(raw) / 256.0
+            } else {
+                continue
+            }
+            if celsius >= 20 && celsius < 120 { temps.append(celsius) }
         }
         guard !temps.isEmpty else { return nil }
         return temps.reduce(0, +) / Double(temps.count)
