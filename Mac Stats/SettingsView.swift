@@ -78,13 +78,28 @@ struct SettingsView: View {
                 
                 Section("Menu Bar Icon") {
                     Toggle("Show CPU in Menu Bar", isOn: $preferences.showMenuBarCPU)
+                    if preferences.showMenuBarCPU {
+                        Toggle("  Show CPU Chart", isOn: $preferences.showMenuBarCPUChart)
+                    }
                     Toggle("Show Memory in Menu Bar", isOn: $preferences.showMenuBarMemory)
+                    if preferences.showMenuBarMemory {
+                        Toggle("  Show Memory Chart", isOn: $preferences.showMenuBarMemChart)
+                    }
                     Toggle("Show Disk in Menu Bar", isOn: $preferences.showMenuBarDisk)
                     Toggle("Show Network in Menu Bar", isOn: $preferences.showMenuBarNetwork)
                     Toggle("Show Uptime in Menu Bar", isOn: $preferences.showMenuBarUptime)
                     Toggle("Show Power in Menu Bar", isOn: $preferences.showMenuBarPower)
+                    if preferences.showMenuBarPower {
+                        Toggle("  Show Power Chart", isOn: $preferences.showMenuBarPowerChart)
+                    }
                     Toggle("Show CPU Temp in Menu Bar", isOn: $preferences.showMenuBarCPUTemp)
+                    if preferences.showMenuBarCPUTemp {
+                        Toggle("  Show Temp Chart", isOn: $preferences.showMenuBarTempChart)
+                    }
                     Toggle("Show Fan Speed in Menu Bar", isOn: $preferences.showMenuBarFanSpeed)
+                    if preferences.showMenuBarFanSpeed {
+                        Toggle("  Show Fan Chart", isOn: $preferences.showMenuBarFanChart)
+                    }
                 }
                 
                 Section("Update Interval") {

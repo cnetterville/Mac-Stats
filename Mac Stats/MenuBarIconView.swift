@@ -107,16 +107,21 @@ struct MenuBarIconView: View {
     
     @ViewBuilder
     private func cpuStatView() -> some View {
-        // Fixed width container to prevent jitter
-        VStack(alignment: .center, spacing: compactSpacing) {
-            Text("CPU")
-                .font(compactFont)
-                // Keep CPU label always white
-            Text(systemMonitor.cpuUsage < 10 ? String(format: "%.0f%%", systemMonitor.cpuUsage) : String(format: "%02.0f%%", systemMonitor.cpuUsage))
-                .font(dataFont)
-                .foregroundColor(cpuUsageColor()) // Only the percentage changes color
+        HStack(spacing: 3) {
+            VStack(alignment: .center, spacing: compactSpacing) {
+                Text("CPU")
+                    .font(compactFont)
+                Text(systemMonitor.cpuUsage < 10 ? String(format: "%.0f%%", systemMonitor.cpuUsage) : String(format: "%02.0f%%", systemMonitor.cpuUsage))
+                    .font(dataFont)
+                    .foregroundColor(cpuUsageColor())
+            }
+            if preferences.showMenuBarCPUChart {
+                SparklineView(data: systemMonitor.cpuHistory, lineColor: cpuUsageColor(), lineWidth: 1.0,
+                              fixedMin: 0, fixedMax: 100)
+                    .frame(width: 28, height: 14)
+            }
         }
-        .frame(width: 35) // Reduced from 40
+        .frame(width: preferences.showMenuBarCPUChart ? 66 : 35)
         .monospacedDigit()
     }
     
@@ -136,13 +141,22 @@ struct MenuBarIconView: View {
     
     @ViewBuilder
     private func memoryStatView() -> some View {
-        VStack(alignment: .center, spacing: compactSpacing) {
-            Text("MEM")
-                .font(compactFont)
-            Text(String(format: "%.0f%%", systemMonitor.memoryUsage.total > 0 ? (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100 : 0))
-                .font(dataFont)
+        let memPct = systemMonitor.memoryUsage.total > 0
+            ? (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100 : 0.0
+        HStack(spacing: 3) {
+            VStack(alignment: .center, spacing: compactSpacing) {
+                Text("MEM")
+                    .font(compactFont)
+                Text(String(format: "%.0f%%", memPct))
+                    .font(dataFont)
+            }
+            if preferences.showMenuBarMemChart {
+                SparklineView(data: systemMonitor.memoryHistory, lineColor: .blue, lineWidth: 1.0,
+                              fixedMin: 0, fixedMax: 100)
+                    .frame(width: 28, height: 14)
+            }
         }
-        .frame(width: 45) // Reduced from 50
+        .frame(width: preferences.showMenuBarMemChart ? 76 : 45)
         .monospacedDigit()
     }
     
@@ -222,14 +236,21 @@ struct MenuBarIconView: View {
     @ViewBuilder
     private func powerStatView() -> some View {
         let watts = systemMonitor.powerConsumptionInfo.totalSystemPower
-        VStack(alignment: .center, spacing: compactSpacing) {
-            Text("PWR")
-                .font(compactFont)
-            Text(watts >= 100 ? String(format: "%.0fW", watts) : String(format: "%.1fW", watts))
-                .font(dataFont)
-                .foregroundColor(powerColor(for: watts))
+        HStack(spacing: 3) {
+            VStack(alignment: .center, spacing: compactSpacing) {
+                Text("PWR")
+                    .font(compactFont)
+                Text(watts >= 100 ? String(format: "%.0fW", watts) : String(format: "%.1fW", watts))
+                    .font(dataFont)
+                    .foregroundColor(powerColor(for: watts))
+            }
+            if preferences.showMenuBarPowerChart {
+                SparklineView(data: systemMonitor.powerHistory, lineColor: powerColor(for: watts), lineWidth: 1.0,
+                              fixedMin: 0)
+                    .frame(width: 28, height: 14)
+            }
         }
-        .frame(width: 42)
+        .frame(width: preferences.showMenuBarPowerChart ? 73 : 42)
         .monospacedDigit()
     }
 
@@ -239,28 +260,44 @@ struct MenuBarIconView: View {
         let value = preferences.temperatureUnit == .fahrenheit
             ? TemperatureMonitor.celsiusToFahrenheit(temp) : temp
         let unit  = preferences.temperatureUnit == .fahrenheit ? "°F" : "°C"
-        VStack(alignment: .center, spacing: compactSpacing) {
-            Text("TMP")
-                .font(compactFont)
-            Text(String(format: "%.0f\(unit)", value))
-                .font(dataFont)
-                .foregroundColor(tempColor(for: temp))
+        // Build display history in the current unit
+        let tempHistory: [Double] = preferences.temperatureUnit == .fahrenheit
+            ? systemMonitor.cpuTemperatureHistory.map { TemperatureMonitor.celsiusToFahrenheit($0) }
+            : systemMonitor.cpuTemperatureHistory
+        HStack(spacing: 3) {
+            VStack(alignment: .center, spacing: compactSpacing) {
+                Text("TMP")
+                    .font(compactFont)
+                Text(String(format: "%.0f\(unit)", value))
+                    .font(dataFont)
+                    .foregroundColor(tempColor(for: temp))
+            }
+            if preferences.showMenuBarTempChart {
+                SparklineView(data: tempHistory, lineColor: tempColor(for: temp), lineWidth: 1.0)
+                    .frame(width: 28, height: 14)
+            }
         }
-        .frame(width: 42)
+        .frame(width: preferences.showMenuBarTempChart ? 73 : 42)
         .monospacedDigit()
     }
 
     @ViewBuilder
     private func fanStatView() -> some View {
-        let fan = systemMonitor.fanInfo
-        let rpm = fan.rpm
-        VStack(alignment: .center, spacing: compactSpacing) {
-            Text("FAN")
-                .font(compactFont)
-            Text(rpm > 0 ? String(format: "%.0f", rpm) : "---")
-                .font(dataFont)
+        let rpm = systemMonitor.fanInfo.rpm
+        HStack(spacing: 3) {
+            VStack(alignment: .center, spacing: compactSpacing) {
+                Text("FAN")
+                    .font(compactFont)
+                Text(rpm > 0 ? String(format: "%.0f", rpm) : "---")
+                    .font(dataFont)
+            }
+            if preferences.showMenuBarFanChart {
+                SparklineView(data: systemMonitor.fanHistory, lineColor: .cyan, lineWidth: 1.0,
+                              fixedMin: 0)
+                    .frame(width: 28, height: 14)
+            }
         }
-        .frame(width: 42)
+        .frame(width: preferences.showMenuBarFanChart ? 73 : 42)
         .monospacedDigit()
     }
 

@@ -293,6 +293,9 @@ class SystemMonitor: ObservableObject {
     @Published var initialDataLoaded: Bool = false
     @Published var cpuHistory: [Double] = []
     @Published var cpuTemperatureHistory: [Double] = []
+    @Published var memoryHistory: [Double] = []
+    @Published var powerHistory: [Double] = []
+    @Published var fanHistory: [Double] = []
     @Published var uploadHistory: [Double] = []
     @Published var downloadHistory: [Double] = []
     
@@ -510,6 +513,9 @@ class SystemMonitor: ObservableObject {
             self.updateCPUHistory(with: cpu)
             self.updateCPUTemperatureHistory(with: cpuTemp)
             self.updateNetworkHistory(upload: network.upload, download: network.download)
+            let initMemPct = memory.total > 0 ? (memory.used / memory.total) * 100.0 : 0.0
+            self.updateMemoryHistory(with: initMemPct)
+            self.updateFanHistory(with: fan.rpm)
             
             // Update all published properties
             self.cpuUsage = cpu
@@ -779,6 +785,9 @@ class SystemMonitor: ObservableObject {
                 self.updateCPUHistory(with: cpu)
                 self.updateCPUTemperatureHistory(with: cpuTemp)
                 self.updateNetworkHistory(upload: network.upload, download: network.download)
+                let memPct = memory.total > 0 ? (memory.used / memory.total) * 100.0 : 0.0
+                self.updateMemoryHistory(with: memPct)
+                self.updateFanHistory(with: fan.rpm)
 
                 // Only publish values that actually changed to suppress unnecessary SwiftUI redraws.
                 if abs(self.cpuUsage - cpu) > 0.1 { self.cpuUsage = cpu }
@@ -810,6 +819,7 @@ class SystemMonitor: ObservableObject {
                 if abs(self.powerConsumptionInfo.totalSystemPower - powerConsumption.totalSystemPower) > 0.5 {
                     self.powerConsumptionInfo = powerConsumption
                 }
+                self.updatePowerHistory(with: powerConsumption.totalSystemPower)
             }
         }
     }
@@ -834,6 +844,21 @@ class SystemMonitor: ObservableObject {
         }
     }
     
+    private func updateMemoryHistory(with value: Double) {
+        memoryHistory.append(value)
+        if memoryHistory.count > Constants.maxHistoryPoints { memoryHistory.removeFirst() }
+    }
+
+    private func updatePowerHistory(with value: Double) {
+        powerHistory.append(value)
+        if powerHistory.count > Constants.maxHistoryPoints { powerHistory.removeFirst() }
+    }
+
+    private func updateFanHistory(with value: Double) {
+        fanHistory.append(value)
+        if fanHistory.count > Constants.maxHistoryPoints { fanHistory.removeFirst() }
+    }
+
     // Update network history for sparklines
     private func updateNetworkHistory(upload: Double, download: Double) {
         uploadHistory.append(upload)

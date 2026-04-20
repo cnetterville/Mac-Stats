@@ -70,6 +70,11 @@ class PreferencesManager: ObservableObject {
         case showMenuBarPower = "showMenuBarPower"
         case showMenuBarCPUTemp = "showMenuBarCPUTemp"
         case showMenuBarFanSpeed = "showMenuBarFanSpeed"
+        case showMenuBarCPUChart = "showMenuBarCPUChart"
+        case showMenuBarMemChart = "showMenuBarMemChart"
+        case showMenuBarPowerChart = "showMenuBarPowerChart"
+        case showMenuBarTempChart = "showMenuBarTempChart"
+        case showMenuBarFanChart = "showMenuBarFanChart"
         case updateInterval = "updateInterval"
         case powerUpdateInterval = "powerUpdateInterval"
         case launchAtStartup = "launchAtStartup"
@@ -109,6 +114,11 @@ class PreferencesManager: ObservableObject {
     @Published var showMenuBarPower: Bool = false
     @Published var showMenuBarCPUTemp: Bool = false
     @Published var showMenuBarFanSpeed: Bool = false
+    @Published var showMenuBarCPUChart: Bool = false
+    @Published var showMenuBarMemChart: Bool = false
+    @Published var showMenuBarPowerChart: Bool = false
+    @Published var showMenuBarTempChart: Bool = false
+    @Published var showMenuBarFanChart: Bool = false
     @Published var updateInterval: TimeInterval = 3.0  // Increased from 2 to 3 seconds for menubar app
     @Published var powerUpdateInterval: TimeInterval = 60.0  // Increased from 30 to 60 seconds - reduces macmon calls
     @Published var launchAtStartup: Bool = false
@@ -199,6 +209,11 @@ class PreferencesManager: ObservableObject {
         UserDefaults.standard.set(showMenuBarPower, forKey: Keys.showMenuBarPower.rawValue)
         UserDefaults.standard.set(showMenuBarCPUTemp, forKey: Keys.showMenuBarCPUTemp.rawValue)
         UserDefaults.standard.set(showMenuBarFanSpeed, forKey: Keys.showMenuBarFanSpeed.rawValue)
+        UserDefaults.standard.set(showMenuBarCPUChart, forKey: Keys.showMenuBarCPUChart.rawValue)
+        UserDefaults.standard.set(showMenuBarMemChart, forKey: Keys.showMenuBarMemChart.rawValue)
+        UserDefaults.standard.set(showMenuBarPowerChart, forKey: Keys.showMenuBarPowerChart.rawValue)
+        UserDefaults.standard.set(showMenuBarTempChart, forKey: Keys.showMenuBarTempChart.rawValue)
+        UserDefaults.standard.set(showMenuBarFanChart, forKey: Keys.showMenuBarFanChart.rawValue)
         UserDefaults.standard.set(updateInterval, forKey: Keys.updateInterval.rawValue)
         UserDefaults.standard.set(powerUpdateInterval, forKey: Keys.powerUpdateInterval.rawValue)
         UserDefaults.standard.set(launchAtStartup, forKey: Keys.launchAtStartup.rawValue)
@@ -252,6 +267,11 @@ class PreferencesManager: ObservableObject {
         showMenuBarPower = UserDefaults.standard.object(forKey: Keys.showMenuBarPower.rawValue) as? Bool ?? false
         showMenuBarCPUTemp = UserDefaults.standard.object(forKey: Keys.showMenuBarCPUTemp.rawValue) as? Bool ?? false
         showMenuBarFanSpeed = UserDefaults.standard.object(forKey: Keys.showMenuBarFanSpeed.rawValue) as? Bool ?? false
+        showMenuBarCPUChart = UserDefaults.standard.object(forKey: Keys.showMenuBarCPUChart.rawValue) as? Bool ?? false
+        showMenuBarMemChart = UserDefaults.standard.object(forKey: Keys.showMenuBarMemChart.rawValue) as? Bool ?? false
+        showMenuBarPowerChart = UserDefaults.standard.object(forKey: Keys.showMenuBarPowerChart.rawValue) as? Bool ?? false
+        showMenuBarTempChart = UserDefaults.standard.object(forKey: Keys.showMenuBarTempChart.rawValue) as? Bool ?? false
+        showMenuBarFanChart = UserDefaults.standard.object(forKey: Keys.showMenuBarFanChart.rawValue) as? Bool ?? false
         updateInterval = UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.updateInterval.rawValue) : 3.0  // Default 3 seconds
         powerUpdateInterval = UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) != 0 ? UserDefaults.standard.double(forKey: Keys.powerUpdateInterval.rawValue) : 60.0  // Default 60 seconds
         launchAtStartup = UserDefaults.standard.bool(forKey: Keys.launchAtStartup.rawValue)
@@ -302,7 +322,12 @@ class PreferencesManager: ObservableObject {
             $showMenuBarUptime.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarPower.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarCPUTemp.map { _ in () }.eraseToAnyPublisher(),
-            $showMenuBarFanSpeed.map { _ in () }.eraseToAnyPublisher()
+            $showMenuBarFanSpeed.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarCPUChart.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarMemChart.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarPowerChart.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarTempChart.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarFanChart.map { _ in () }.eraseToAnyPublisher()
         ])
         
         // Group 3: Update intervals and startup

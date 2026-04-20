@@ -12,11 +12,16 @@ struct SparklineView: View {
     let data: [Double]
     let lineColor: Color
     let lineWidth: CGFloat
-    
-    init(data: [Double], lineColor: Color = .blue, lineWidth: CGFloat = 2.0) {
+    var fixedMin: Double? = nil
+    var fixedMax: Double? = nil
+
+    init(data: [Double], lineColor: Color = .blue, lineWidth: CGFloat = 2.0,
+         fixedMin: Double? = nil, fixedMax: Double? = nil) {
         self.data = data
         self.lineColor = lineColor
         self.lineWidth = lineWidth
+        self.fixedMin = fixedMin
+        self.fixedMax = fixedMax
     }
     
     var body: some View {
@@ -27,8 +32,8 @@ struct SparklineView: View {
                     .fill(Color.clear)
             } else {
                 Path { path in
-                    let maxValue = data.max() ?? 1
-                    let minValue = data.min() ?? 0
+                    let maxValue = fixedMax ?? data.max() ?? 1
+                    let minValue = fixedMin ?? data.min() ?? 0
                     let range = maxValue - minValue
                     let effectiveRange = range > 0 ? range : 1
                     
