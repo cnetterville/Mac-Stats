@@ -168,18 +168,8 @@ struct MenuBarDropdownView: View {
                 .labelsHidden()
                 
                 // Quick action buttons
-                HStack(spacing: 8) {
-                    Button(action: {
-                        openWindow(id: "main")
-                        dismissMenu()
-                    }) {
-                        Label("View Full Details", systemImage: "gauge")
-                            .font(.system(size: 11, weight: .medium))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    
+                HStack {
+                    Spacer()
                     Button(action: {
                         openWindow(id: "settings")
                         dismissMenu()
@@ -189,8 +179,6 @@ struct MenuBarDropdownView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    
-
                 }
             }
             .padding(16)

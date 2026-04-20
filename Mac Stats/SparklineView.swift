@@ -23,37 +23,72 @@ struct SparklineView: View {
         self.fixedMin = fixedMin
         self.fixedMax = fixedMax
     }
-    
+
+    private func points(in size: CGSize) -> [CGPoint] {
+        guard data.count >= 2 else { return [] }
+        let maxValue = fixedMax ?? data.max() ?? 1
+        let minValue = fixedMin ?? data.min() ?? 0
+        let range = maxValue - minValue
+        let effectiveRange = range > 0 ? range : 1
+        let stepX = size.width / CGFloat(data.count - 1)
+        return data.enumerated().map { index, value in
+            let x = CGFloat(index) * stepX
+            let normalizedValue = (value - minValue) / effectiveRange
+            let y = size.height * (1 - normalizedValue)
+            return CGPoint(x: x, y: y)
+        }
+    }
+
+    // Smooth line using midpoint-quadratic bezier
+    private func smoothLinePath(pts: [CGPoint]) -> Path {
+        var path = Path()
+        guard pts.count >= 2 else { return path }
+        path.move(to: pts[0])
+        if pts.count == 2 {
+            path.addLine(to: pts[1])
+        } else {
+            for i in 1..<pts.count - 1 {
+                let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
+                                  y: (pts[i].y + pts[i + 1].y) / 2)
+                path.addQuadCurve(to: mid, control: pts[i])
+            }
+            path.addLine(to: pts[pts.count - 1])
+        }
+        return path
+    }
+
+    // Closed fill path: smooth line + drop to bottom corners
+    private func fillPath(pts: [CGPoint], height: CGFloat) -> Path {
+        var path = smoothLinePath(pts: pts)
+        guard let last = pts.last, let first = pts.first else { return path }
+        path.addLine(to: CGPoint(x: last.x, y: height))
+        path.addLine(to: CGPoint(x: first.x, y: height))
+        path.closeSubpath()
+        return path
+    }
+
     var body: some View {
         GeometryReader { geometry in
             if data.count < 2 {
-                // Not enough data to draw a line
-                Rectangle()
-                    .fill(Color.clear)
+                Rectangle().fill(Color.clear)
             } else {
-                Path { path in
-                    let maxValue = fixedMax ?? data.max() ?? 1
-                    let minValue = fixedMin ?? data.min() ?? 0
-                    let range = maxValue - minValue
-                    let effectiveRange = range > 0 ? range : 1
-                    
-                    let width = geometry.size.width
-                    let height = geometry.size.height
-                    let stepX = width / CGFloat(data.count - 1)
-                    
-                    for (index, value) in data.enumerated() {
-                        let x = CGFloat(index) * stepX
-                        let normalizedValue = (value - minValue) / effectiveRange
-                        let y = height * (1 - normalizedValue) // Invert Y to have higher values at top
-                        
-                        if index == 0 {
-                            path.move(to: CGPoint(x: x, y: y))
-                        } else {
-                            path.addLine(to: CGPoint(x: x, y: y))
-                        }
-                    }
+                let pts = points(in: geometry.size)
+                ZStack {
+                    // Gradient fill under the line
+                    fillPath(pts: pts, height: geometry.size.height)
+                        .fill(LinearGradient(
+                            colors: [lineColor.opacity(0.45), lineColor.opacity(0.0)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ))
+
+                    // Smooth line on top
+                    smoothLinePath(pts: pts)
+                        .stroke(lineColor,
+                                style: StrokeStyle(lineWidth: lineWidth,
+                                                   lineCap: .round,
+                                                   lineJoin: .round))
                 }
-                .stroke(lineColor, lineWidth: lineWidth)
             }
         }
     }
