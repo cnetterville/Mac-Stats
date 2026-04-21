@@ -156,7 +156,7 @@ class MenuBarImageManager: ObservableObject {
                     .environmentObject(systemMonitor)
                     .environmentObject(preferences)
                     .environmentObject(ExternalIPManager.shared)
-                    .padding(.horizontal, 4)
+                    .padding(.horizontal, 0)
                     .background(Color.clear)
                 
                 // Create snapshot in a separate context

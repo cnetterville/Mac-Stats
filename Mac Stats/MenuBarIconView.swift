@@ -60,7 +60,7 @@ struct MenuBarIconView: View {
         return HStack(alignment: .center, spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
                 if i > 0 { statDivider() }
-                items[i].padding(.horizontal, 4)
+                items[i].padding(.horizontal, 2)
             }
         }
         .monospacedDigit()
