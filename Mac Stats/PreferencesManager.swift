@@ -85,12 +85,6 @@ enum MenuBarStatID: String, CaseIterable, Identifiable, Codable {
 class PreferencesManager: ObservableObject {
     // MARK: - Keys for UserDefaults
     private enum Keys: String {
-        case showCPU = "showCPU"
-        case showCPUTemperature = "showCPUTemperature"
-        case showMemory = "showMemory"
-        case showDisk = "showDisk"
-        case showNetwork = "showNetwork"
-        case showPowerConsumption = "showPowerConsumption"
         case showMenuBarCPU = "showMenuBarCPU"
         case showMenuBarMemory = "showMenuBarMemory"
         case showMenuBarDisk = "showMenuBarDisk"
@@ -129,12 +123,6 @@ class PreferencesManager: ObservableObject {
     }
     
     // MARK: - Published Properties
-    @Published var showCPU: Bool = true
-    @Published var showCPUTemperature: Bool = true
-    @Published var showMemory: Bool = true
-    @Published var showDisk: Bool = true
-    @Published var showNetwork: Bool = true
-    @Published var showPowerConsumption: Bool = true
     @Published var showMenuBarCPU: Bool = true
     @Published var showMenuBarMemory: Bool = true
     @Published var showMenuBarDisk: Bool = false
@@ -224,12 +212,6 @@ class PreferencesManager: ObservableObject {
     }
     
     private func saveUserDefaults() {
-        UserDefaults.standard.set(showCPU, forKey: Keys.showCPU.rawValue)
-        UserDefaults.standard.set(showCPUTemperature, forKey: Keys.showCPUTemperature.rawValue)
-        UserDefaults.standard.set(showMemory, forKey: Keys.showMemory.rawValue)
-        UserDefaults.standard.set(showDisk, forKey: Keys.showDisk.rawValue)
-        UserDefaults.standard.set(showNetwork, forKey: Keys.showNetwork.rawValue)
-        UserDefaults.standard.set(showPowerConsumption, forKey: Keys.showPowerConsumption.rawValue)
         UserDefaults.standard.set(showMenuBarCPU, forKey: Keys.showMenuBarCPU.rawValue)
         UserDefaults.standard.set(showMenuBarMemory, forKey: Keys.showMenuBarMemory.rawValue)
         UserDefaults.standard.set(showMenuBarDisk, forKey: Keys.showMenuBarDisk.rawValue)
@@ -284,12 +266,6 @@ class PreferencesManager: ObservableObject {
     }
     
     private func loadUserDefaults() {
-        showCPU = UserDefaults.standard.object(forKey: Keys.showCPU.rawValue) as? Bool ?? true
-        showCPUTemperature = UserDefaults.standard.object(forKey: Keys.showCPUTemperature.rawValue) as? Bool ?? true
-        showMemory = UserDefaults.standard.object(forKey: Keys.showMemory.rawValue) as? Bool ?? true
-        showDisk = UserDefaults.standard.object(forKey: Keys.showDisk.rawValue) as? Bool ?? true
-        showNetwork = UserDefaults.standard.object(forKey: Keys.showNetwork.rawValue) as? Bool ?? true
-        showPowerConsumption = UserDefaults.standard.object(forKey: Keys.showPowerConsumption.rawValue) as? Bool ?? true
         showMenuBarCPU = UserDefaults.standard.object(forKey: Keys.showMenuBarCPU.rawValue) as? Bool ?? true
         showMenuBarMemory = UserDefaults.standard.object(forKey: Keys.showMenuBarMemory.rawValue) as? Bool ?? true
         showMenuBarDisk = UserDefaults.standard.object(forKey: Keys.showMenuBarDisk.rawValue) as? Bool ?? false
@@ -338,16 +314,6 @@ class PreferencesManager: ObservableObject {
     private func setupChangeObservers() {
         // Debounce all changes to reduce the frequency of saves
         // This prevents excessive UserDefaults writes when rapidly changing settings
-        
-        // Group 1: Display preferences
-        let displayPublishers = Publishers.MergeMany([
-            $showCPU.map { _ in () }.eraseToAnyPublisher(),
-            $showCPUTemperature.map { _ in () }.eraseToAnyPublisher(),
-            $showMemory.map { _ in () }.eraseToAnyPublisher(),
-            $showDisk.map { _ in () }.eraseToAnyPublisher(),
-            $showNetwork.map { _ in () }.eraseToAnyPublisher(),
-            $showPowerConsumption.map { _ in () }.eraseToAnyPublisher()
-        ])
         
         // Group 2: Menu bar preferences
         let menuBarPublishers = Publishers.MergeMany([
@@ -409,7 +375,6 @@ class PreferencesManager: ObservableObject {
         
         // Combine all groups
         Publishers.MergeMany([
-            displayPublishers.eraseToAnyPublisher(),
             menuBarPublishers.eraseToAnyPublisher(),
             systemPublishers.eraseToAnyPublisher(),
             networkPublishers.eraseToAnyPublisher(),

@@ -32,10 +32,10 @@ struct MenuBarIconView: View {
     }
     
     private func shouldShowAnyStats() -> Bool {
-        return (preferences.showCPU && preferences.showMenuBarCPU) ||
-               (preferences.showMemory && preferences.showMenuBarMemory) ||
-               (preferences.showDisk && preferences.showMenuBarDisk) ||
-               (preferences.showNetwork && preferences.showMenuBarNetwork) ||
+        return preferences.showMenuBarCPU ||
+               preferences.showMenuBarMemory ||
+               preferences.showMenuBarDisk ||
+               preferences.showMenuBarNetwork ||
                preferences.showMenuBarUptime ||
                preferences.showMenuBarPower ||
                preferences.showMenuBarCPUTemp ||
@@ -46,10 +46,10 @@ struct MenuBarIconView: View {
         var items: [AnyView] = []
         for stat in preferences.menuBarStatOrder {
             switch stat {
-            case .cpu:      if preferences.showCPU     && preferences.showMenuBarCPU    { items.append(AnyView(cpuStatView())) }
-            case .memory:   if preferences.showMemory  && preferences.showMenuBarMemory  { items.append(AnyView(memoryStatView())) }
-            case .disk:     if preferences.showDisk    && preferences.showMenuBarDisk    { items.append(AnyView(diskStatView())) }
-            case .network:  if preferences.showNetwork && preferences.showMenuBarNetwork { items.append(AnyView(networkStatCompactView())) }
+            case .cpu:      if preferences.showMenuBarCPU     { items.append(AnyView(cpuStatView())) }
+            case .memory:   if preferences.showMenuBarMemory  { items.append(AnyView(memoryStatView())) }
+            case .disk:     if preferences.showMenuBarDisk    { items.append(AnyView(diskStatView())) }
+            case .network:  if preferences.showMenuBarNetwork { items.append(AnyView(networkStatCompactView())) }
             case .uptime:   if preferences.showMenuBarUptime   { items.append(AnyView(uptimeStatView())) }
             case .power:    if preferences.showMenuBarPower    { items.append(AnyView(powerStatView())) }
             case .cpuTemp:  if preferences.showMenuBarCPUTemp  { items.append(AnyView(cpuTempStatView())) }

@@ -28,14 +28,10 @@ struct CardBasedStatsView: View {
                         systemInfoCard()
                         
                         // Memory
-                        if preferences.showMemory {
-                            memoryCard()
-                        }
+                        memoryCard()
                         
                         // Disk
-                        if preferences.showDisk {
-                            diskCard()
-                        }
+                        diskCard()
                         
                         // UPS/Battery
                         if systemMonitor.batteryInfo.present {
@@ -52,17 +48,11 @@ struct CardBasedStatsView: View {
                     // Right Column
                     VStack(spacing: 12) {
                         // CPU
-                        if preferences.showCPU {
-                            cpuCard()
-                        }
+                        cpuCard()
                         // Network
-                        if preferences.showNetwork {
-                            networkCard()
-                        }
+                        networkCard()
                         // Power Consumption
-                        if preferences.showPowerConsumption {
-                            powerConsumptionCard()
-                        }
+                        powerConsumptionCard()
                     }
                     .frame(maxWidth: .infinity)
                 }
@@ -255,10 +245,9 @@ struct CardBasedStatsView: View {
                         CoreUsageGridView(coreUsages: systemMonitor.cpuCoreUsages, pCoreCount: systemMonitor.pCoreCount)
                     }
 
-                    // CPU Temperature (if enabled) with enhanced sparkline
-                    if preferences.showCPUTemperature {
-                        Divider()
-                            .opacity(0.5)
+                    // CPU Temperature
+                    Divider()
+                        .opacity(0.5)
                         
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
@@ -346,7 +335,6 @@ struct CardBasedStatsView: View {
                                     }
                                 }
                             }
-                        }
                     }
                     
                     // Fan Speed Information

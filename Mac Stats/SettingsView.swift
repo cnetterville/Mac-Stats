@@ -27,18 +27,6 @@ struct SettingsView: View {
     var body: some View {
         TabView(selection: $selectedTab) {
             Form {
-                Section("Display Options") {
-                    Toggle("Show CPU Usage", isOn: $preferences.showCPU)
-                    if preferences.showCPU {
-                        Toggle("Show CPU Temperature", isOn: $preferences.showCPUTemperature)
-                            .padding(.leading, 20)
-                    }
-                    Toggle("Show Memory Usage", isOn: $preferences.showMemory)
-                    Toggle("Show Disk Usage", isOn: $preferences.showDisk)
-                    Toggle("Show Network Usage", isOn: $preferences.showNetwork)
-                    Toggle("Show Power Consumption", isOn: $preferences.showPowerConsumption)
-                }
-
                 Section("Main Window Style") {
                     Picker("Layout", selection: $preferences.useTabbedView) {
                         Text("Cards").tag(false)

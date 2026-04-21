@@ -123,10 +123,10 @@ class MenuBarImageManager: ObservableObject {
         let hasRealDiskData = systemMonitor.diskUsage.free > 0
         let hasRealNetworkData = systemMonitor.networkUsage.upload > 0 || systemMonitor.networkUsage.download > 0
         
-        let shouldShowAnyStats = (preferences.showCPU && preferences.showMenuBarCPU) ||
-                                (preferences.showMemory && preferences.showMenuBarMemory) ||
-                                (preferences.showDisk && preferences.showMenuBarDisk) ||
-                                (preferences.showNetwork && preferences.showMenuBarNetwork)
+        let shouldShowAnyStats = preferences.showMenuBarCPU ||
+                                preferences.showMenuBarMemory ||
+                                preferences.showMenuBarDisk ||
+                                preferences.showMenuBarNetwork
         
         // If we should show stats but haven't received real data yet, wait a bit more
         if shouldShowAnyStats && !hasReceivedRealData {

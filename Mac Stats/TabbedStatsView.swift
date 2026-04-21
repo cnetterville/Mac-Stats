@@ -259,23 +259,14 @@ struct TabbedStatsView: View {
     
     private var performanceContent: some View {
         VStack(spacing: 12) {
-            if preferences.showCPU {
-                fullCPUCard
-            }
-            
-            if preferences.showMemory {
-                fullMemoryCard
-            }
-
+            fullCPUCard
+            fullMemoryCard
         }
     }
     
     private var storageContent: some View {
         VStack(spacing: 12) {
-            if preferences.showDisk {
-                fullDiskCard
-            }
-            
+            fullDiskCard
             externalDrivesCard
         }
     }
@@ -420,9 +411,7 @@ struct TabbedStatsView: View {
     
     private var networkContent: some View {
         VStack(spacing: 12) {
-            if preferences.showNetwork {
-                fullNetworkCard
-            }
+            fullNetworkCard
             
             wifiCard
             
@@ -565,11 +554,7 @@ struct TabbedStatsView: View {
     private var systemContent: some View {
         VStack(spacing: 12) {
             fullSystemInfoCard
-			
-            if preferences.showCPUTemperature {
-                temperatureCard
-            }
-            
+            temperatureCard
             systemResourcesCard
         }
     }
@@ -1908,7 +1893,7 @@ struct TabbedStatsView: View {
     private func getNetworkInterfaceIcon(for interface: String) -> String {
         switch interface.lowercased() {
         case let iface where iface.hasPrefix("en"):
-            return "ethernet"
+            return "cable.connector"
         case let iface where iface.hasPrefix("wl") || iface.contains("wifi"):
             return "wifi"
         case "bond0":
