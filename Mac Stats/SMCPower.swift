@@ -90,6 +90,48 @@ func readSMCFans() -> SMCFanData? {
     } ?? nil
 }
 
+/// Reads GPU die temperature (°C) from SMC.
+/// Tries Apple Silicon keys Tg0D, Tg1D, then legacy TG0D.
+func readSMCGPUTemperature() -> Double? {
+    withSMCConnection { conn in
+        for key in ["Tg0D", "Tg1D", "TG0D", "TG0P"] {
+            guard let bytes = smcRead(conn, key: key, size: 4), bytes.count >= 4 else { continue }
+            var value: Float32 = 0
+            withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+            let celsius = Double(value)
+            if celsius >= 20 && celsius < 120 { return celsius }
+        }
+        return nil
+    }
+}
+
+/// Reads NVMe/SSD temperature (°C) from SMC.
+/// Tries the most common proximity and die keys across Apple Silicon and Intel Macs.
+func readSMCSSDTemperature() -> Double? {
+    withSMCConnection { conn in
+        for key in ["TH0x", "TH0P", "TH1P", "TS0D", "TS0S"] {
+            guard let bytes = smcRead(conn, key: key, size: 4), bytes.count >= 4 else { continue }
+            var value: Float32 = 0
+            withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+            let celsius = Double(value)
+            if celsius >= 20 && celsius < 100 { return celsius }
+        }
+        return nil
+    }
+}
+
+/// Reads DC-in power (watts) from SMC key "PDTR" — the actual wattage being
+/// drawn from the power adapter at this moment.
+func readSMCDCInPower() -> Double? {
+    withSMCConnection { conn in
+        guard let bytes = smcRead(conn, key: "PDTR", size: 4), bytes.count >= 4 else { return nil }
+        var value: Float32 = 0
+        withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+        let watts = Double(value)
+        return watts > 0 ? watts : nil
+    }
+}
+
 // MARK: - Connection helper
 
 private func withSMCConnection<T>(_ body: (io_connect_t) -> T?) -> T? {

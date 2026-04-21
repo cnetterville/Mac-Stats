@@ -53,6 +53,35 @@ enum TemperatureUnit: Int, CaseIterable {
     }
 }
 
+enum MenuBarStatID: String, CaseIterable, Identifiable, Codable {
+    case cpu, memory, disk, network, uptime, power, cpuTemp, fanSpeed
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .cpu: return "CPU Usage"
+        case .memory: return "Memory"
+        case .disk: return "Disk"
+        case .network: return "Network"
+        case .uptime: return "Uptime"
+        case .power: return "Power"
+        case .cpuTemp: return "CPU Temp"
+        case .fanSpeed: return "Fan Speed"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .cpu: return "cpu"
+        case .memory: return "memorychip"
+        case .disk: return "internaldrive"
+        case .network: return "network"
+        case .uptime: return "clock"
+        case .power: return "bolt.fill"
+        case .cpuTemp: return "thermometer"
+        case .fanSpeed: return "fan"
+        }
+    }
+}
+
 class PreferencesManager: ObservableObject {
     // MARK: - Keys for UserDefaults
     private enum Keys: String {
@@ -83,8 +112,8 @@ class PreferencesManager: ObservableObject {
         case networkMonitoringMode = "networkMonitoringMode"
         case autoScaleNetwork = "autoScaleNetwork"
         case temperatureUnit = "temperatureUnit"
-        case showBothTemperatureUnits = "showBothTemperatureUnits"
         case useTabbedView = "useTabbedView"
+        case menuBarStatOrder = "menuBarStatOrder"
         // Mailjet settings
         case mailjetEmailEnabled = "mailjetEmailEnabled"
         case mailjetFromEmail = "mailjetFromEmail"
@@ -127,8 +156,8 @@ class PreferencesManager: ObservableObject {
     @Published var networkMonitoringMode: NetworkMonitoringMode = .interface
     @Published var autoScaleNetwork: Bool = true
     @Published var temperatureUnit: TemperatureUnit = .celsius
-    @Published var showBothTemperatureUnits: Bool = false
     @Published var useTabbedView: Bool = false  // New preference for view style
+    @Published var menuBarStatOrder: [MenuBarStatID] = MenuBarStatID.allCases
     
     // Mailjet Email Notification Settings
     @Published var mailjetEmailEnabled: Bool = false
@@ -222,8 +251,10 @@ class PreferencesManager: ObservableObject {
         UserDefaults.standard.set(networkMonitoringMode.rawValue, forKey: Keys.networkMonitoringMode.rawValue)
         UserDefaults.standard.set(autoScaleNetwork, forKey: Keys.autoScaleNetwork.rawValue)
         UserDefaults.standard.set(temperatureUnit.rawValue, forKey: Keys.temperatureUnit.rawValue)
-        UserDefaults.standard.set(showBothTemperatureUnits, forKey: Keys.showBothTemperatureUnits.rawValue)
         UserDefaults.standard.set(useTabbedView, forKey: Keys.useTabbedView.rawValue)
+        if let data = try? JSONEncoder().encode(menuBarStatOrder) {
+            UserDefaults.standard.set(data, forKey: Keys.menuBarStatOrder.rawValue)
+        }
         
         // Mailjet email notification settings
         UserDefaults.standard.set(mailjetEmailEnabled, forKey: Keys.mailjetEmailEnabled.rawValue)
@@ -280,8 +311,13 @@ class PreferencesManager: ObservableObject {
         networkMonitoringMode = NetworkMonitoringMode(rawValue: UserDefaults.standard.integer(forKey: Keys.networkMonitoringMode.rawValue)) ?? .interface
         autoScaleNetwork = UserDefaults.standard.object(forKey: Keys.autoScaleNetwork.rawValue) as? Bool ?? true
         temperatureUnit = TemperatureUnit(rawValue: UserDefaults.standard.integer(forKey: Keys.temperatureUnit.rawValue)) ?? .celsius
-        showBothTemperatureUnits = UserDefaults.standard.bool(forKey: Keys.showBothTemperatureUnits.rawValue)
         useTabbedView = UserDefaults.standard.bool(forKey: Keys.useTabbedView.rawValue)
+        if let data = UserDefaults.standard.data(forKey: Keys.menuBarStatOrder.rawValue),
+           var order = try? JSONDecoder().decode([MenuBarStatID].self, from: data) {
+            // Append any newly added stats missing from the saved order
+            for stat in MenuBarStatID.allCases where !order.contains(stat) { order.append(stat) }
+            menuBarStatOrder = order
+        }
         
         // Mailjet email notification settings
         mailjetEmailEnabled = UserDefaults.standard.bool(forKey: Keys.mailjetEmailEnabled.rawValue)
@@ -348,8 +384,8 @@ class PreferencesManager: ObservableObject {
         // Group 5: Temperature and UI preferences
         let uiPublishers = Publishers.MergeMany([
             $temperatureUnit.map { _ in () }.eraseToAnyPublisher(),
-            $showBothTemperatureUnits.map { _ in () }.eraseToAnyPublisher(),
-            $useTabbedView.map { _ in () }.eraseToAnyPublisher()
+            $useTabbedView.map { _ in () }.eraseToAnyPublisher(),
+            $menuBarStatOrder.map { _ in () }.eraseToAnyPublisher()
         ])
         
         // Group 6: Email notification settings

@@ -171,6 +171,17 @@ struct MenuBarDropdownView: View {
                 HStack {
                     Spacer()
                     Button(action: {
+                        openWindow(id: "main")
+                        dismissMenu()
+                    }) {
+                        Image(systemName: "macwindow")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Open Main Window")
+
+                    Button(action: {
                         openWindow(id: "settings")
                         dismissMenu()
                     }) {
@@ -179,6 +190,7 @@ struct MenuBarDropdownView: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .help("Open Settings")
                 }
             }
             .padding(16)
@@ -237,7 +249,7 @@ struct MenuBarDropdownView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
-        .frame(width: 320, height: 540)
+        .frame(width: 320, height: 620)
         .animation(.easeInOut(duration: 0.15), value: selectedTab)
     }
     
@@ -301,11 +313,7 @@ struct CPUSectionView: View {
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundColor(.secondary)
                                 
-                                // Display both C and F
-                                let celsius = systemMonitor.cpuTemperature
-                                let fahrenheit = TemperatureMonitor.celsiusToFahrenheit(celsius)
-                                
-                                Text(String(format: "%.0f°C / %.0f°F", celsius, fahrenheit))
+                                Text(formatTemp(systemMonitor.cpuTemperature))
                                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                                     .foregroundColor(temperatureColor(systemMonitor.cpuTemperature))
                                     .minimumScaleFactor(0.8)
@@ -340,9 +348,14 @@ struct CPUSectionView: View {
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text("Last \(systemMonitor.cpuHistory.count) samples")
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary.opacity(0.7))
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary.opacity(0.7))
+                            Text(formatUptime(systemMonitor.systemInfo.uptime))
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
                     }
                     
                     if !systemMonitor.cpuHistory.isEmpty {
@@ -361,6 +374,37 @@ struct CPUSectionView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
+
+                // Per-core CPU breakdown
+                if !systemMonitor.cpuCoreUsages.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Per-Core Usage")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            if systemMonitor.pCoreCount > 0 {
+                                HStack(spacing: 8) {
+                                    HStack(spacing: 3) {
+                                        Circle().fill(Color.orange).frame(width: 6, height: 6)
+                                        Text("P-cores").font(.system(size: 9)).foregroundColor(.secondary)
+                                    }
+                                    HStack(spacing: 3) {
+                                        Circle().fill(Color.blue).frame(width: 6, height: 6)
+                                        Text("E-cores").font(.system(size: 9)).foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        CoreUsageGridView(
+                            coreUsages: systemMonitor.cpuCoreUsages,
+                            pCoreCount: systemMonitor.pCoreCount
+                        )
+                        .padding(.top, 2)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
@@ -416,6 +460,12 @@ struct CPUSectionView: View {
         }
     }
     
+    private func formatTemp(_ celsius: Double) -> String {
+        preferences.temperatureUnit == .fahrenheit
+            ? String(format: "%.0f°F", TemperatureMonitor.celsiusToFahrenheit(celsius))
+            : String(format: "%.0f°C", celsius)
+    }
+
     private func cpuColor(_ usage: Double) -> Color {
         switch usage {
         case 0..<30: return .green
@@ -425,6 +475,14 @@ struct CPUSectionView: View {
         }
     }
     
+    private func formatUptime(_ uptime: TimeInterval) -> String {
+        let t = Int(uptime)
+        let d = t / 86400; let h = (t % 86400) / 3600; let m = (t % 3600) / 60
+        if d > 0 { return "\(d)d \(h)h" }
+        if h > 0 { return String(format: "%dh %02dm", h, m) }
+        return "\(m)m"
+    }
+
     private func cpuStatus(_ usage: Double) -> String {
         switch usage {
         case 0..<30: return "Low Usage"
@@ -673,6 +731,40 @@ struct MemorySectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
             
+            // Memory History Chart
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Usage History")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text("Last \(systemMonitor.memoryHistory.count) samples")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary.opacity(0.7))
+                    }
+                    if !systemMonitor.memoryHistory.isEmpty {
+                        MemorySparklineView(data: systemMonitor.memoryHistory)
+                            .frame(height: 50)
+                    } else {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.purple.opacity(0.1))
+                            .frame(height: 50)
+                            .overlay(Text("Loading...").font(.system(size: 10)).foregroundColor(.secondary))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
             // Top Memory Processes Section
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -985,7 +1077,7 @@ struct NetworkSectionView: View {
                                 Text("Download")
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundColor(.secondary)
-                                Text("\(formatSpeed(downloadMbps)) Mbps")
+                                Text(formatSpeedWithUnit(downloadMbps))
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                                     .foregroundColor(.blue)
                                     .minimumScaleFactor(0.8)
@@ -1006,7 +1098,7 @@ struct NetworkSectionView: View {
                                 Text("Upload")
                                     .font(.system(size: 9, weight: .medium))
                                     .foregroundColor(.secondary)
-                                Text("\(formatSpeed(uploadMbps)) Mbps")
+                                Text(formatSpeedWithUnit(uploadMbps))
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                                     .foregroundColor(.orange)
                                     .minimumScaleFactor(0.8)
@@ -1142,6 +1234,12 @@ struct NetworkSectionView: View {
         } else {
             return String(format: "%.2f", mbps)
         }
+    }
+
+    private func formatSpeedWithUnit(_ mbps: Double) -> String {
+        mbps >= 1000
+            ? String(format: "%.2f Gbps", mbps / 1000)
+            : "\(formatSpeed(mbps)) Mbps"
     }
     
     private func cleanISPName(_ ispName: String) -> String {
@@ -1328,6 +1426,40 @@ struct DiskSectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
             
+            // Disk I/O Rate badges
+            if systemMonitor.diskReadRate > 0 || systemMonitor.diskWriteRate > 0 {
+                HStack(spacing: 10) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .foregroundColor(.mint)
+                            .font(.system(size: 11))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Read").font(.system(size: 9)).foregroundColor(.secondary)
+                            Text(String(format: "%.1f MB/s", systemMonitor.diskReadRate))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(.mint)
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor).opacity(0.5)))
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .foregroundColor(.orange)
+                            .font(.system(size: 11))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Write").font(.system(size: 9)).foregroundColor(.secondary)
+                            Text(String(format: "%.1f MB/s", systemMonitor.diskWriteRate))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    .padding(8)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor).opacity(0.5)))
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+            }
+
             // Top Disk Processes Section
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -1772,9 +1904,178 @@ struct CPUSparklineView: View {
     }
 }
 
+// MARK: - Per-Core CPU Usage Grid
+struct CoreUsageGridView: View {
+    let coreUsages: [Double]
+    let pCoreCount: Int
+    private let barH: CGFloat = 22
+
+    private func coreColor(_ i: Int) -> Color {
+        guard pCoreCount > 0 else { return .orange }
+        return i < pCoreCount ? .orange : .blue
+    }
+
+    var body: some View {
+        let perRow = min(coreUsages.count, 12)
+        let rowCount = max(1, (coreUsages.count + perRow - 1) / perRow)
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(0..<rowCount, id: \.self) { row in
+                HStack(spacing: 4) {
+                    let start = row * perRow
+                    let end = min(start + perRow, coreUsages.count)
+                    ForEach(start..<end, id: \.self) { i in
+                        VStack(spacing: 2) {
+                            Text(String(format: "%.0f", coreUsages[i]))
+                                .font(.system(size: 7, weight: .medium, design: .monospaced))
+                                .foregroundColor(coreColor(i))
+                                .lineLimit(1)
+                            ZStack(alignment: .bottom) {
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(coreColor(i).opacity(0.15))
+                                    .frame(height: barH)
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(coreColor(i))
+                                    .frame(height: max(1, barH * CGFloat(coreUsages[i] / 100)))
+                            }
+                            .frame(height: barH)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Power Sparkline View
+struct PowerSparklineView: View {
+    let data: [Double]
+    let maxWatts: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottom) {
+                Path { path in
+                    for i in 0...4 {
+                        let y = geometry.size.height * CGFloat(i) / 4
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: geometry.size.width, y: y))
+                    }
+                }
+                .stroke(Color.gray.opacity(0.1), style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+
+                LinearGradient(
+                    colors: [Color.yellow.opacity(0.3), Color.yellow.opacity(0.1), Color.yellow.opacity(0.05)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .mask(areaPath(in: geometry.size))
+
+                linePath(in: geometry.size)
+                    .stroke(
+                        LinearGradient(colors: [Color.yellow, Color.orange],
+                                       startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                    )
+                    .shadow(color: Color.yellow.opacity(0.3), radius: 2, x: 0, y: 1)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.05)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func linePath(in size: CGSize) -> Path {
+        Path { path in
+            guard !data.isEmpty else { return }
+            let scale = max(maxWatts, data.max() ?? 1)
+            let stepX = size.width / CGFloat(max(data.count - 1, 1))
+            path.move(to: CGPoint(x: 0, y: size.height - CGFloat(data[0] / scale) * size.height))
+            for (i, v) in data.enumerated() {
+                path.addLine(to: CGPoint(x: CGFloat(i) * stepX, y: size.height - CGFloat(v / scale) * size.height))
+            }
+        }
+    }
+
+    private func areaPath(in size: CGSize) -> Path {
+        Path { path in
+            guard !data.isEmpty else { return }
+            let scale = max(maxWatts, data.max() ?? 1)
+            let stepX = size.width / CGFloat(max(data.count - 1, 1))
+            path.move(to: CGPoint(x: 0, y: size.height))
+            path.addLine(to: CGPoint(x: 0, y: size.height - CGFloat(data[0] / scale) * size.height))
+            for (i, v) in data.enumerated() {
+                path.addLine(to: CGPoint(x: CGFloat(i) * stepX, y: size.height - CGFloat(v / scale) * size.height))
+            }
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.closeSubpath()
+        }
+    }
+}
+
+// Memory Sparkline View - mirrors CPUSparklineView with purple colouring
+struct MemorySparklineView: View {
+    let data: [Double]
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottom) {
+                Path { path in
+                    for i in 0...4 {
+                        let y = geometry.size.height * CGFloat(i) / 4
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: geometry.size.width, y: y))
+                    }
+                }
+                .stroke(Color.gray.opacity(0.1), style: StrokeStyle(lineWidth: 0.5, dash: [2, 2]))
+
+                LinearGradient(
+                    colors: [Color.purple.opacity(0.3), Color.purple.opacity(0.1), Color.purple.opacity(0.05)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .mask(areaPath(in: geometry.size))
+
+                linePath(in: geometry.size)
+                    .stroke(
+                        LinearGradient(colors: [Color.purple, Color.purple.opacity(0.8)],
+                                       startPoint: .leading, endPoint: .trailing),
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                    )
+                    .shadow(color: Color.purple.opacity(0.3), radius: 2, x: 0, y: 1)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.05)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func linePath(in size: CGSize) -> Path {
+        Path { path in
+            guard !data.isEmpty else { return }
+            let stepX = size.width / CGFloat(max(data.count - 1, 1))
+            path.move(to: CGPoint(x: 0, y: size.height - CGFloat(data[0] / 100) * size.height))
+            for (i, v) in data.enumerated() {
+                path.addLine(to: CGPoint(x: CGFloat(i) * stepX, y: size.height - CGFloat(v / 100) * size.height))
+            }
+        }
+    }
+
+    private func areaPath(in size: CGSize) -> Path {
+        Path { path in
+            guard !data.isEmpty else { return }
+            let stepX = size.width / CGFloat(max(data.count - 1, 1))
+            path.move(to: CGPoint(x: 0, y: size.height))
+            path.addLine(to: CGPoint(x: 0, y: size.height - CGFloat(data[0] / 100) * size.height))
+            for (i, v) in data.enumerated() {
+                path.addLine(to: CGPoint(x: CGFloat(i) * stepX, y: size.height - CGFloat(v / 100) * size.height))
+            }
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.closeSubpath()
+        }
+    }
+}
+
 // Power Section
 struct PowerSectionView: View {
     @EnvironmentObject var systemMonitor: SystemMonitor
+    @EnvironmentObject var preferences: PreferencesManager
 
     private var watts: Double { systemMonitor.powerConsumptionInfo.totalSystemPower }
     private var cpuWatts: Double { systemMonitor.powerConsumptionInfo.cpuPower }
@@ -1793,7 +2094,7 @@ struct PowerSectionView: View {
                             .stroke(Color.gray.opacity(0.2), lineWidth: 8)
                             .frame(width: 90, height: 90)
                         Circle()
-                            .trim(from: 0, to: min(watts / 100, 1))
+                            .trim(from: 0, to: min(watts / systemMonitor.thermalProfile.powerRed, 1))
                             .stroke(powerColor(watts).gradient,
                                     style: StrokeStyle(lineWidth: 8, lineCap: .round))
                             .frame(width: 90, height: 90)
@@ -1807,7 +2108,7 @@ struct PowerSectionView: View {
                                 .foregroundColor(powerColor(watts))
                                 .minimumScaleFactor(0.7)
                                 .lineLimit(1)
-                            Text(isEstimate ? "W est." : "W")
+                            Text("W")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(.secondary)
                         }
@@ -1832,18 +2133,35 @@ struct PowerSectionView: View {
 
                 // Temperature + fan row
                 HStack(spacing: 12) {
+                    // CPU temp
                     HStack(spacing: 6) {
                         Image(systemName: "thermometer.medium")
                             .font(.system(size: 11))
                             .foregroundColor(tempColor(temp))
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Temp")
+                            Text("CPU")
                                 .font(.system(size: 9))
                                 .foregroundColor(.secondary)
-                            Text(String(format: "%.0f°C / %.0f°F",
-                                        temp, TemperatureMonitor.celsiusToFahrenheit(temp)))
+                            Text(formatTemp(temp))
                                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundColor(tempColor(temp))
+                        }
+                    }
+
+                    // SSD temp (if available)
+                    if systemMonitor.ssdTemperature > 0 {
+                        HStack(spacing: 6) {
+                            Image(systemName: "internaldrive")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("SSD")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                Text(formatTemp(systemMonitor.ssdTemperature))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(systemMonitor.ssdTemperature > 60 ? .orange : .primary)
+                            }
                         }
                     }
 
@@ -1866,7 +2184,25 @@ struct PowerSectionView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.bottom, systemMonitor.dcInPower > 0 ? 8 : 16)
+
+                // DC-in power row (if available)
+                if systemMonitor.dcInPower > 0 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "powerplug.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.green.gradient)
+                        Text("Wall Power")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(String(format: "%.0f W", systemMonitor.dcInPower))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.green)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
@@ -1877,12 +2213,45 @@ struct PowerSectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
 
+            // Power History Chart
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Power History")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("Last \(systemMonitor.powerHistory.count) samples")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                if !systemMonitor.powerHistory.isEmpty {
+                    PowerSparklineView(data: systemMonitor.powerHistory,
+                                       maxWatts: systemMonitor.thermalProfile.powerRed)
+                        .frame(height: 50)
+                } else {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.yellow.opacity(0.1))
+                        .frame(height: 50)
+                        .overlay(Text("Loading...").font(.system(size: 10)).foregroundColor(.secondary))
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
             // Battery card
             if systemMonitor.batteryInfo.present {
                 VStack(spacing: 0) {
                     HStack {
-                        Image(systemName: systemMonitor.batteryInfo.isCharging
-                              ? "battery.100.bolt" : "battery.75")
+                        Image(systemName: batteryIcon(systemMonitor.batteryInfo.chargeLevel,
+                                                       charging: systemMonitor.batteryInfo.isCharging))
                             .font(.system(size: 14))
                             .foregroundColor(batteryColor(systemMonitor.batteryInfo.chargeLevel))
                         VStack(alignment: .leading, spacing: 2) {
@@ -1978,7 +2347,7 @@ struct PowerSectionView: View {
                 Text(label)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundColor(.secondary)
-                Text(String(format: "%.1f W", value))
+                Text(String(format: "%.0f W", value))
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(color)
             }
@@ -1988,12 +2357,29 @@ struct PowerSectionView: View {
             .fill(Color(NSColor.controlBackgroundColor).opacity(0.5)))
     }
 
+    private func formatTemp(_ celsius: Double) -> String {
+        preferences.temperatureUnit == .fahrenheit
+            ? String(format: "%.0f°F", TemperatureMonitor.celsiusToFahrenheit(celsius))
+            : String(format: "%.0f°C", celsius)
+    }
+
     private func powerColor(_ w: Double) -> Color {
         systemMonitor.thermalProfile.powerColor(w)
     }
 
     private func tempColor(_ c: Double) -> Color {
         systemMonitor.thermalProfile.temperatureColor(c)
+    }
+
+    private func batteryIcon(_ pct: Double, charging: Bool) -> String {
+        if charging { return pct >= 99 ? "battery.100.bolt" : "battery.100.bolt" }
+        switch pct {
+        case 0..<12.5:  return "battery.0"
+        case 12.5..<37.5: return "battery.25"
+        case 37.5..<62.5: return "battery.50"
+        case 62.5..<87.5: return "battery.75"
+        default:         return "battery.100"
+        }
     }
 
     private func batteryColor(_ pct: Double) -> Color {

@@ -32,34 +32,28 @@ struct SettingsView: View {
                     if preferences.showCPU {
                         Toggle("Show CPU Temperature", isOn: $preferences.showCPUTemperature)
                             .padding(.leading, 20)
-                        
-                        if preferences.showCPUTemperature {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Temperature Unit:")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    Spacer()
-                                }
-                                
-                                Picker("Temperature Unit", selection: $preferences.temperatureUnit) {
-                                    Text("Celsius (°C)").tag(TemperatureUnit.celsius)
-                                    Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit)
-                                }
-                                .pickerStyle(.segmented)
-                                .animation(nil, value: preferences.temperatureUnit)
-                                
-                                Toggle("Show Both Units", isOn: $preferences.showBothTemperatureUnits)
-                                    .font(.caption)
-                            }
-                            .padding(.leading, 20)
-                            .padding(.top, 4)
-                        }
                     }
                     Toggle("Show Memory Usage", isOn: $preferences.showMemory)
                     Toggle("Show Disk Usage", isOn: $preferences.showDisk)
                     Toggle("Show Network Usage", isOn: $preferences.showNetwork)
                     Toggle("Show Power Consumption", isOn: $preferences.showPowerConsumption)
+                }
+
+                Section("Main Window Style") {
+                    Picker("Layout", selection: $preferences.useTabbedView) {
+                        Text("Cards").tag(false)
+                        Text("Tabbed").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                Section("Temperature Unit") {
+                    Picker("Temperature Unit", selection: $preferences.temperatureUnit) {
+                        Text("Celsius (°C)").tag(TemperatureUnit.celsius)
+                        Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit)
+                    }
+                    .pickerStyle(.segmented)
+                    .animation(nil, value: preferences.temperatureUnit)
                 }
                 
                 
@@ -89,6 +83,26 @@ struct SettingsView: View {
                     }
                 }
                 
+                Section("Menu Bar Order") {
+                    Text("Drag rows to reorder stats in the menu bar")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    List {
+                        ForEach(preferences.menuBarStatOrder) { stat in
+                            HStack(spacing: 10) {
+                                Image(systemName: stat.icon)
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 20)
+                                Text(stat.label)
+                            }
+                        }
+                        .onMove { from, to in
+                            preferences.menuBarStatOrder.move(fromOffsets: from, toOffset: to)
+                        }
+                    }
+                    .frame(height: 220)
+                }
+
                 Section("Update Interval") {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("General Stats Refresh")

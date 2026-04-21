@@ -74,6 +74,14 @@ struct SparklineView: View {
             } else {
                 let pts = points(in: geometry.size)
                 ZStack {
+                    // Subtle baseline at the bottom of the chart
+                    Path { path in
+                        let y = geometry.size.height - 0.5
+                        path.move(to: CGPoint(x: 0, y: y))
+                        path.addLine(to: CGPoint(x: geometry.size.width, y: y))
+                    }
+                    .stroke(lineColor.opacity(0.25), lineWidth: 0.5)
+
                     // Gradient fill under the line
                     fillPath(pts: pts, height: geometry.size.height)
                         .fill(LinearGradient(
@@ -88,6 +96,15 @@ struct SparklineView: View {
                                 style: StrokeStyle(lineWidth: lineWidth,
                                                    lineCap: .round,
                                                    lineJoin: .round))
+
+                    // Trailing dot with soft glow at the current (rightmost) value
+                    if let lastPt = pts.last {
+                        Circle()
+                            .fill(lineColor)
+                            .frame(width: 3, height: 3)
+                            .shadow(color: lineColor.opacity(0.85), radius: 3, x: 0, y: 0)
+                            .position(lastPt)
+                    }
                 }
             }
         }

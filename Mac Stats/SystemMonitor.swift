@@ -303,6 +303,14 @@ class SystemMonitor: ObservableObject {
     @Published var systemInfo: SystemInfo = SystemInfo() // System information
     @Published var powerConsumptionInfo: PowerConsumptionInfo = PowerConsumptionInfo() // Power consumption information
     @Published var initialDataLoaded: Bool = false
+    @Published var gpuTemperature: Double = 0.0
+    @Published var ssdTemperature: Double = 0.0
+    @Published var dcInPower: Double = 0.0
+    @Published var diskReadRate: Double = 0.0
+    @Published var diskWriteRate: Double = 0.0
+    @Published var cpuCoreUsages: [Double] = []
+    @Published var pCoreCount: Int = 0
+    @Published var eCoreCount: Int = 0
     @Published var cpuHistory: [Double] = []
     @Published var cpuTemperatureHistory: [Double] = []
     @Published var memoryHistory: [Double] = []
@@ -332,6 +340,8 @@ class SystemMonitor: ObservableObject {
     private var diskProcessUpdateCounter: Int = 0
     private var cachedDiskProcesses: [ProcessDiskInfo] = []
     private var previousDiskIO: [Int32: (read: UInt64, written: UInt64, time: Date)] = [:]
+    private var previousDiskIOStats: (read: UInt64, written: UInt64, time: Date)?
+    private var previousCoreData: [Int32] = []
     private var cachedNettopPath: String? = nil  // resolved once; avoids repeated FileManager lookups
     
     // Add caching for power consumption to reduce macmon calls
@@ -353,9 +363,20 @@ class SystemMonitor: ObservableObject {
     }
     init() {
         refreshNetworkInterfaces()
+        let split = Self.readPECoreSplit()
+        pCoreCount = split.pCores
+        eCoreCount = split.eCores
         // Data will be refreshed when the view appears.
         startMonitoring()
         startExternalIPRefresh()
+    }
+
+    private static func readPECoreSplit() -> (pCores: Int, eCores: Int) {
+        var p: Int32 = 0; var e: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        sysctlbyname("hw.perflevel0.physicalcpu", &p, &size, nil, 0)
+        sysctlbyname("hw.perflevel1.physicalcpu", &e, &size, nil, 0)
+        return (Int(p), Int(e))
     }
     
     func startMonitoring() {
@@ -729,21 +750,25 @@ class SystemMonitor: ObservableObject {
             var cpu: Double = 0
             var cpuTemp: Double = 0
             var fan = FanInfo()
+            var coreUsages: [Double] = []
             group.enter()
             queue.async {
                 cpu = self.getCurrentCPU()
                 cpuTemp = self.getCurrentCPUTemperature()
                 fan = self.getCurrentFanInfo()
+                coreUsages = self.getPerCoreCPUUsage()
                 group.leave()
             }
 
             // Group 2: Memory + Disk (independent filesystem/VM calls)
             var memory: (used: Double, total: Double) = (0, 0)
             var disk: (free: Double, total: Double, purgeable: Double) = (0, 0, 0)
+            var diskIO: (readMBps: Double, writeMBps: Double) = (0, 0)
             group.enter()
             queue.async {
                 memory = self.getCurrentMemory()
                 disk = self.getCurrentDisk()
+                diskIO = self.getDiskIORate()
                 group.leave()
             }
 
@@ -823,6 +848,9 @@ class SystemMonitor: ObservableObject {
                 if self.fanInfo.speeds != fan.speeds || abs(self.fanInfo.rpm - fan.rpm) > 50 { self.fanInfo = fan }
                 if abs(self.memoryUsage.used - memory.used) > 50_000_000 { self.memoryUsage = memory }
                 if abs(self.diskUsage.free - disk.free) > 100_000_000 { self.diskUsage = disk }
+                if !coreUsages.isEmpty { self.cpuCoreUsages = coreUsages }
+                if abs(self.diskReadRate - diskIO.readMBps) > 0.05 { self.diskReadRate = diskIO.readMBps }
+                if abs(self.diskWriteRate - diskIO.writeMBps) > 0.05 { self.diskWriteRate = diskIO.writeMBps }
                 self.networkUsage = network   // always assign — fluctuates every tick when active
                 self.topProcesses = processes
                 self.topMemoryProcesses = memoryProcesses
@@ -844,11 +872,17 @@ class SystemMonitor: ObservableObject {
     private func updatePowerConsumption() {
         DispatchQueue.global(qos: .userInitiated).async {
             let powerConsumption = self.getCurrentPowerConsumption()
+            let gpuTemp  = readSMCGPUTemperature() ?? 0.0
+            let ssdTemp  = readSMCSSDTemperature() ?? 0.0
+            let dcInWatts = readSMCDCInPower() ?? 0.0
             DispatchQueue.main.async {
                 if abs(self.powerConsumptionInfo.totalSystemPower - powerConsumption.totalSystemPower) > 0.5 {
                     self.powerConsumptionInfo = powerConsumption
                 }
-                self.updatePowerHistory(with: powerConsumption.totalSystemPower)
+                self.updatePowerHistory(with: dcInWatts > 0 ? dcInWatts : powerConsumption.totalSystemPower)
+                if abs(self.gpuTemperature - gpuTemp) > 0.5 { self.gpuTemperature = gpuTemp }
+                if abs(self.ssdTemperature - ssdTemp) > 0.5 { self.ssdTemperature = ssdTemp }
+                if abs(self.dcInPower - dcInWatts) > 0.5    { self.dcInPower = dcInWatts }
             }
         }
     }
@@ -945,6 +979,71 @@ class SystemMonitor: ObservableObject {
         return 0.0
     }
     
+    private func getPerCoreCPUUsage() -> [Double] {
+        var numCPUs: natural_t = 0
+        var cpuInfoPtr: processor_info_array_t?
+        var numCPUInfo: mach_msg_type_number_t = 0
+        guard host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                                  &numCPUs, &cpuInfoPtr, &numCPUInfo) == KERN_SUCCESS,
+              let infoPtr = cpuInfoPtr else { return [] }
+        let count = Int(numCPUInfo)
+        let current = Array(UnsafeBufferPointer(start: infoPtr, count: count))
+        vm_deallocate(mach_task_self_, vm_address_t(bitPattern: infoPtr),
+                      vm_size_t(count) * vm_size_t(MemoryLayout<Int32>.size))
+        var usages: [Double] = []
+        if !previousCoreData.isEmpty && previousCoreData.count == count {
+            let stride = Int(CPU_STATE_MAX)
+            for i in 0..<Int(numCPUs) {
+                let user   = Double(current[i * stride + Int(CPU_STATE_USER)])
+                let system = Double(current[i * stride + Int(CPU_STATE_SYSTEM)])
+                let idle   = Double(current[i * stride + Int(CPU_STATE_IDLE)])
+                let nice   = Double(current[i * stride + Int(CPU_STATE_NICE)])
+                let prevUser   = Double(previousCoreData[i * stride + Int(CPU_STATE_USER)])
+                let prevSystem = Double(previousCoreData[i * stride + Int(CPU_STATE_SYSTEM)])
+                let prevIdle   = Double(previousCoreData[i * stride + Int(CPU_STATE_IDLE)])
+                let prevNice   = Double(previousCoreData[i * stride + Int(CPU_STATE_NICE)])
+                let active = (user - prevUser) + (system - prevSystem) + (nice - prevNice)
+                let total  = active + (idle - prevIdle)
+                usages.append(total > 0 ? min(100, (active / total) * 100) : 0)
+            }
+        }
+        previousCoreData = current
+        return usages
+    }
+
+    private func getDiskIORate() -> (readMBps: Double, writeMBps: Double) {
+        var totalRead: UInt64 = 0
+        var totalWrite: UInt64 = 0
+        var iter: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault,
+              IOServiceMatching("IOBlockStorageDriver"), &iter) == KERN_SUCCESS else { return (0, 0) }
+        defer { IOObjectRelease(iter) }
+        var service = IOIteratorNext(iter)
+        while service != IO_OBJECT_NULL {
+            var props: Unmanaged<CFMutableDictionary>?
+            if IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
+               let dict = props?.takeRetainedValue() as NSDictionary? as? [String: Any],
+               let stats = dict["Statistics"] as? [String: Any] {
+                if let r = stats["Bytes (Read)"] as? UInt64  { totalRead  += r }
+                if let w = stats["Bytes (Write)"] as? UInt64 { totalWrite += w }
+            }
+            IOObjectRelease(service)
+            service = IOIteratorNext(iter)
+        }
+        let now = Date()
+        var result: (readMBps: Double, writeMBps: Double) = (0, 0)
+        if let prev = previousDiskIOStats {
+            let elapsed = now.timeIntervalSince(prev.time)
+            if elapsed > 0 && elapsed < 30 {
+                let rd = totalRead  >= prev.read    ? totalRead  - prev.read    : 0
+                let wd = totalWrite >= prev.written ? totalWrite - prev.written : 0
+                result = (Double(rd) / elapsed / 1_048_576, Double(wd) / elapsed / 1_048_576)
+            }
+        }
+        previousDiskIOStats = (read: totalRead, written: totalWrite, time: now)
+        return result
+    }
+
     private func getCurrentCPUTemperature() -> Double {
         let temperature = TemperatureMonitor.averageCPUTemperature()
         return temperature

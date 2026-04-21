@@ -358,6 +358,26 @@ struct TabbedStatsView: View {
                                 .monospacedDigit()
                                 .foregroundColor(.purple)
                         }
+
+                        if systemMonitor.diskReadRate > 0 || systemMonitor.diskWriteRate > 0 {
+                            Divider()
+                            HStack {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.down.circle.fill").foregroundColor(.mint).font(.caption)
+                                    Text("Read").font(.caption).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.1f MB/s", systemMonitor.diskReadRate)).font(.caption).monospacedDigit().foregroundColor(.mint)
+                            }
+                            HStack {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.circle.fill").foregroundColor(.orange).font(.caption)
+                                    Text("Write").font(.caption).foregroundColor(.secondary)
+                                }
+                                Spacer()
+                                Text(String(format: "%.1f MB/s", systemMonitor.diskWriteRate)).font(.caption).monospacedDigit().foregroundColor(.orange)
+                            }
+                        }
                     }
                 }
             }
@@ -896,7 +916,7 @@ struct TabbedStatsView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             Spacer()
-                            Text(String(format: "%.1f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
+                            Text(String(format: "%.0f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
@@ -904,11 +924,40 @@ struct TabbedStatsView: View {
                         }
 
                         if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
-                            GlassInfoRowView(label: "CPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
+                            GlassInfoRowView(label: "CPU", value: String(format: "%.0f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
                         }
 
                         if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
-                            GlassInfoRowView(label: "GPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
+                            GlassInfoRowView(label: "GPU", value: String(format: "%.0f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
+                        }
+
+                        if systemMonitor.ssdTemperature > 0 {
+                            GlassInfoRowView(
+                                label: "SSD Temp",
+                                value: TemperatureMonitor.formatTemperature(systemMonitor.ssdTemperature, unit: preferences.temperatureUnit, showBoth: false),
+                                valueColor: temperatureColor(for: systemMonitor.ssdTemperature)
+                            )
+                        }
+
+                        if systemMonitor.dcInPower > 0 {
+                            GlassInfoRowView(label: "Wall Power", value: String(format: "%.0f W", systemMonitor.dcInPower), valueColor: .green)
+                        }
+
+                        if !systemMonitor.powerHistory.isEmpty {
+                            Divider().opacity(0.5)
+                            HStack {
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .foregroundColor(.yellow)
+                                    .font(.caption)
+                                Text("Power Trend")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            PowerSparklineView(
+                                data: systemMonitor.powerHistory,
+                                maxWatts: systemMonitor.thermalProfile.powerRed
+                            )
+                            .frame(height: 40)
                         }
                     }
                 }
@@ -1023,7 +1072,10 @@ struct TabbedStatsView: View {
                     }
 					
                     if systemMonitor.batteryInfo.temperature > 0 {
-                        GlassInfoRowView(label: "Temperature", value: String(format: "%.1f°C", systemMonitor.batteryInfo.temperature))
+                        GlassInfoRowView(
+                            label: "Temperature",
+                            value: TemperatureMonitor.formatTemperature(systemMonitor.batteryInfo.temperature, unit: preferences.temperatureUnit, showBoth: false)
+                        )
                     }
 					
                     if systemMonitor.batteryInfo.voltage > 0 {
@@ -1154,9 +1206,9 @@ struct TabbedStatsView: View {
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                         Spacer()
-                        Text(TemperatureMonitor.formatTemperature(systemMonitor.cpuTemperature, 
-                                                                unit: preferences.temperatureUnit, 
-                                                                showBoth: preferences.showBothTemperatureUnits))
+                        Text(TemperatureMonitor.formatTemperature(systemMonitor.cpuTemperature,
+                                                                unit: preferences.temperatureUnit,
+                                                                showBoth: false))
                             .font(.title2)
                             .fontWeight(.bold)
                             .monospacedDigit()
@@ -1529,6 +1581,22 @@ struct TabbedStatsView: View {
                         }
                     }
 					
+                    if !systemMonitor.cpuCoreUsages.isEmpty {
+                        Divider()
+                        HStack {
+                            Image(systemName: "cpu").foregroundColor(.orange).font(.caption)
+                            Text("Per-Core").font(.caption).foregroundColor(.secondary)
+                            Spacer()
+                            if systemMonitor.pCoreCount > 0 {
+                                HStack(spacing: 6) {
+                                    HStack(spacing: 3) { Circle().fill(Color.orange).frame(width: 5, height: 5); Text("P").font(.system(size: 8)).foregroundColor(.secondary) }
+                                    HStack(spacing: 3) { Circle().fill(Color.blue).frame(width: 5, height: 5); Text("E").font(.system(size: 8)).foregroundColor(.secondary) }
+                                }
+                            }
+                        }
+                        CoreUsageGridView(coreUsages: systemMonitor.cpuCoreUsages, pCoreCount: systemMonitor.pCoreCount)
+                    }
+
                     if !systemMonitor.topProcesses.isEmpty {
                         Divider()
 						
@@ -1651,6 +1719,20 @@ struct TabbedStatsView: View {
                         }
                     }
 					
+                    if !systemMonitor.memoryHistory.isEmpty {
+                        Divider()
+                        HStack {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                            Text("Memory Trend")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        MemorySparklineView(data: systemMonitor.memoryHistory)
+                            .frame(height: 40)
+                    }
+
                     if !systemMonitor.topMemoryProcesses.isEmpty {
                         Divider()
 						

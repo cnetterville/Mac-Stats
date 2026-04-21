@@ -153,6 +153,11 @@ struct LiquidGlassModifier: ViewModifier {
     }
 }
 
+// MARK: - Flipped NSVisualEffectView (fixes upside-down text on macOS)
+private class FlippedVisualEffectView: NSVisualEffectView {
+    override var isFlipped: Bool { true }
+}
+
 // MARK: - Liquid Glass Background
 struct LiquidGlassBackground: NSViewRepresentable {
     let material: LiquidGlassMaterial
@@ -161,7 +166,7 @@ struct LiquidGlassBackground: NSViewRepresentable {
     let borderOpacity: Double
     
     func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
+        let view = FlippedVisualEffectView()
         
         if SystemVersionInfo.supportsMaterials {
             // Use modern materials on supported systems

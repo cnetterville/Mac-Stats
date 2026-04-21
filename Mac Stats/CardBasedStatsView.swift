@@ -238,6 +238,23 @@ struct CardBasedStatsView: View {
                         }
                     }
                     
+                    // Per-core CPU breakdown
+                    if !systemMonitor.cpuCoreUsages.isEmpty {
+                        Divider().opacity(0.5)
+                        HStack {
+                            Image(systemName: "cpu").foregroundColor(.orange).font(.caption).glassTextVibrancy()
+                            Text("Per-Core").font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+                            Spacer()
+                            if systemMonitor.pCoreCount > 0 {
+                                HStack(spacing: 6) {
+                                    HStack(spacing: 3) { Circle().fill(Color.orange).frame(width: 5, height: 5); Text("P").font(.system(size: 8)).foregroundColor(.secondary).glassTextVibrancy() }
+                                    HStack(spacing: 3) { Circle().fill(Color.blue).frame(width: 5, height: 5); Text("E").font(.system(size: 8)).foregroundColor(.secondary).glassTextVibrancy() }
+                                }
+                            }
+                        }
+                        CoreUsageGridView(coreUsages: systemMonitor.cpuCoreUsages, pCoreCount: systemMonitor.pCoreCount)
+                    }
+
                     // CPU Temperature (if enabled) with enhanced sparkline
                     if preferences.showCPUTemperature {
                         Divider()
@@ -256,9 +273,9 @@ struct CardBasedStatsView: View {
                                 Spacer()
                                 
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text(TemperatureMonitor.formatTemperature(systemMonitor.cpuTemperature, 
-                                                                            unit: preferences.temperatureUnit, 
-                                                                            showBoth: preferences.showBothTemperatureUnits))
+                                    Text(TemperatureMonitor.formatTemperature(systemMonitor.cpuTemperature,
+                                                                            unit: preferences.temperatureUnit,
+                                                                            showBoth: false))
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                         .monospacedDigit()
@@ -555,6 +572,24 @@ struct CardBasedStatsView: View {
                         }
                     }
                     
+                    // Memory history sparkline
+                    if !systemMonitor.memoryHistory.isEmpty {
+                        Divider()
+                            .opacity(0.5)
+                        HStack {
+                            Image(systemName: "chart.line.uptrend.xyaxis")
+                                .foregroundColor(.blue)
+                                .font(.caption)
+                                .glassTextVibrancy()
+                            Text("Memory Trend")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                        }
+                        MemorySparklineView(data: systemMonitor.memoryHistory)
+                            .frame(height: 40)
+                    }
+
                     // Top Memory Processes with enhanced display
                     if !systemMonitor.topMemoryProcesses.isEmpty {
                         Divider()
@@ -1118,6 +1153,26 @@ struct CardBasedStatsView: View {
                             .foregroundColor(.purple)
                             .glassTextVibrancy()
                     }
+
+                    if systemMonitor.diskReadRate > 0 || systemMonitor.diskWriteRate > 0 {
+                        Divider().opacity(0.5)
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle.fill").foregroundColor(.mint).font(.caption).glassTextVibrancy()
+                                Text("Read").font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+                            }
+                            Spacer()
+                            Text(String(format: "%.1f MB/s", systemMonitor.diskReadRate)).font(.caption).monospacedDigit().foregroundColor(.mint).glassTextVibrancy()
+                        }
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.up.circle.fill").foregroundColor(.orange).font(.caption).glassTextVibrancy()
+                                Text("Write").font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+                            }
+                            Spacer()
+                            Text(String(format: "%.1f MB/s", systemMonitor.diskWriteRate)).font(.caption).monospacedDigit().foregroundColor(.orange).glassTextVibrancy()
+                        }
+                    }
                 }
             }
         }
@@ -1161,7 +1216,7 @@ struct CardBasedStatsView: View {
                                 .foregroundColor(.secondary)
                                 .glassTextVibrancy()
                             Spacer()
-                            Text(String(format: "%.1f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
+                            Text(String(format: "%.0f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .monospacedDigit()
@@ -1170,11 +1225,42 @@ struct CardBasedStatsView: View {
                         }
 
                         if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
-                            InfoRowView(label: "CPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
+                            InfoRowView(label: "CPU", value: String(format: "%.0f W", systemMonitor.powerConsumptionInfo.cpuPower), valueColor: .orange)
                         }
 
                         if systemMonitor.powerConsumptionInfo.gpuPower > 0 {
-                            InfoRowView(label: "GPU", value: String(format: "%.1f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
+                            InfoRowView(label: "GPU", value: String(format: "%.0f W", systemMonitor.powerConsumptionInfo.gpuPower), valueColor: .blue)
+                        }
+
+                        if systemMonitor.ssdTemperature > 0 {
+                            InfoRowView(
+                                label: "SSD Temp",
+                                value: TemperatureMonitor.formatTemperature(systemMonitor.ssdTemperature, unit: preferences.temperatureUnit, showBoth: false),
+                                valueColor: temperatureColor(for: systemMonitor.ssdTemperature)
+                            )
+                        }
+
+                        if systemMonitor.dcInPower > 0 {
+                            InfoRowView(label: "Wall Power", value: String(format: "%.0f W", systemMonitor.dcInPower), valueColor: .green)
+                        }
+
+                        if !systemMonitor.powerHistory.isEmpty {
+                            Divider().opacity(0.5)
+                            HStack {
+                                Image(systemName: "chart.line.uptrend.xyaxis")
+                                    .foregroundColor(.yellow)
+                                    .font(.caption)
+                                    .glassTextVibrancy()
+                                Text("Power Trend")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
+                            }
+                            PowerSparklineView(
+                                data: systemMonitor.powerHistory,
+                                maxWatts: systemMonitor.thermalProfile.powerRed
+                            )
+                            .frame(height: 40)
                         }
                     }
                 }

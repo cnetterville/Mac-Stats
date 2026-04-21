@@ -43,17 +43,19 @@ struct MenuBarIconView: View {
     }
     
     private func enabledStatsView() -> some View {
-        // Build an ordered list of enabled stat views. Dividers are inserted
-        // automatically between items — adding a new stat requires only one entry here.
         var items: [AnyView] = []
-        if preferences.showCPU     && preferences.showMenuBarCPU    { items.append(AnyView(cpuStatView())) }
-        if preferences.showMemory  && preferences.showMenuBarMemory  { items.append(AnyView(memoryStatView())) }
-        if preferences.showDisk    && preferences.showMenuBarDisk    { items.append(AnyView(diskStatView())) }
-        if preferences.showNetwork && preferences.showMenuBarNetwork { items.append(AnyView(networkStatCompactView())) }
-        if preferences.showMenuBarUptime                            { items.append(AnyView(uptimeStatView())) }
-        if preferences.showMenuBarPower                             { items.append(AnyView(powerStatView())) }
-        if preferences.showMenuBarCPUTemp                           { items.append(AnyView(cpuTempStatView())) }
-        if preferences.showMenuBarFanSpeed                          { items.append(AnyView(fanStatView())) }
+        for stat in preferences.menuBarStatOrder {
+            switch stat {
+            case .cpu:      if preferences.showCPU     && preferences.showMenuBarCPU    { items.append(AnyView(cpuStatView())) }
+            case .memory:   if preferences.showMemory  && preferences.showMenuBarMemory  { items.append(AnyView(memoryStatView())) }
+            case .disk:     if preferences.showDisk    && preferences.showMenuBarDisk    { items.append(AnyView(diskStatView())) }
+            case .network:  if preferences.showNetwork && preferences.showMenuBarNetwork { items.append(AnyView(networkStatCompactView())) }
+            case .uptime:   if preferences.showMenuBarUptime   { items.append(AnyView(uptimeStatView())) }
+            case .power:    if preferences.showMenuBarPower    { items.append(AnyView(powerStatView())) }
+            case .cpuTemp:  if preferences.showMenuBarCPUTemp  { items.append(AnyView(cpuTempStatView())) }
+            case .fanSpeed: if preferences.showMenuBarFanSpeed { items.append(AnyView(fanStatView())) }
+            }
+        }
 
         return HStack(alignment: .center, spacing: 0) {
             ForEach(items.indices, id: \.self) { i in
@@ -92,7 +94,7 @@ struct MenuBarIconView: View {
     @ViewBuilder
     private func uptimeStatView() -> some View {
         VStack(alignment: .center, spacing: compactSpacing) {
-            Image(systemName: "arrow.up")
+            Image(systemName: "clock")
                 .font(compactFont)
                 .foregroundColor(.green)
                 .imageScale(.small)
@@ -118,7 +120,7 @@ struct MenuBarIconView: View {
             if preferences.showMenuBarCPUChart {
                 SparklineView(data: systemMonitor.cpuHistory, lineColor: cpuUsageColor(), lineWidth: 1.0,
                               fixedMin: 0, fixedMax: 100)
-                    .frame(width: 28, height: 14)
+                    .frame(width: 28, height: 16)
             }
         }
         .frame(width: preferences.showMenuBarCPUChart ? 66 : 35)
@@ -149,15 +151,24 @@ struct MenuBarIconView: View {
                     .font(compactFont)
                 Text(String(format: "%.0f%%", memPct))
                     .font(dataFont)
+                    .foregroundColor(memUsageColor(memPct))
             }
             if preferences.showMenuBarMemChart {
-                SparklineView(data: systemMonitor.memoryHistory, lineColor: .blue, lineWidth: 1.0,
+                SparklineView(data: systemMonitor.memoryHistory, lineColor: memUsageColor(memPct), lineWidth: 1.0,
                               fixedMin: 0, fixedMax: 100)
-                    .frame(width: 28, height: 14)
+                    .frame(width: 28, height: 16)
             }
         }
-        .frame(width: preferences.showMenuBarMemChart ? 76 : 45)
+        .frame(width: preferences.showMenuBarMemChart ? 66 : 35)
         .monospacedDigit()
+    }
+
+    private func memUsageColor(_ pct: Double) -> Color {
+        switch pct {
+        case 0..<60: return .white
+        case 60..<85: return .yellow
+        default:     return .red
+        }
     }
     
     @ViewBuilder
@@ -170,9 +181,18 @@ struct MenuBarIconView: View {
                 .font(compactFont)
             Text(String(format: "%.0f%%", used))
                 .font(dataFont)
+                .foregroundColor(diskUsageColor(used))
         }
         .frame(width: 35)
         .monospacedDigit()
+    }
+
+    private func diskUsageColor(_ pct: Double) -> Color {
+        switch pct {
+        case 0..<75: return .white
+        case 75..<90: return .yellow
+        default:     return .red
+        }
     }
     
     @ViewBuilder
@@ -180,74 +200,46 @@ struct MenuBarIconView: View {
         let unitType: NetworkFormatter.UnitType = preferences.networkUnit == .bits ? .bits : .bytes
         let uploadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.upload, unitType: unitType, autoScale: preferences.autoScaleNetwork)
         let downloadFormatted = NetworkFormatter.formatNetworkValue(systemMonitor.networkUsage.download, unitType: unitType, autoScale: preferences.autoScaleNetwork)
-        
-        let speedWidth: CGFloat = 32
-        let unitWidth: CGFloat = 34
 
-        HStack(alignment: .center, spacing: -8) {
-            VStack(alignment: .leading, spacing: compactSpacing) {
-                HStack(spacing: 1) {
-                    Text(uploadFormatted.value)
-                        .frame(width: speedWidth, alignment: .trailing)
-                        .font(networkFont)
-                    Text(uploadFormatted.unit)
-                        .frame(width: unitWidth, alignment: .leading)
-                        .font(networkFont)
-                }
-                
-                HStack(spacing: 1) {
-                    Text(downloadFormatted.value)
-                        .frame(width: speedWidth, alignment: .trailing)
-                        .font(networkFont)
-                    Text(downloadFormatted.unit)
-                        .frame(width: unitWidth, alignment: .leading)
-                        .font(networkFont)
-                }
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 2) {
+                Image(systemName: "arrow.up")
+                    .foregroundColor(.red)
+                    .font(.system(size: 8, weight: .semibold))
+                    .frame(width: 9, alignment: .center)
+                Text("\(uploadFormatted.value)\(uploadFormatted.unit)")
+                    .font(networkFont)
+                    .lineLimit(1)
             }
-            
-            HStack(spacing: 0) {
-                VStack(alignment: .center, spacing: 0) {
-                    Image(systemName: "arrow.up")
-                        .foregroundColor(.red)
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    Image(systemName: "arrow.down")
-                        .foregroundColor(.blue)
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                }
-                
-                VStack(alignment: .center, spacing: -4) {
-                    Text("L")
-                        .font(compactFont)
-                        .fontWeight(.regular)
-                    Text("A")
-                        .font(compactFont)
-                        .fontWeight(.regular)
-                    Text("N")
-                        .font(compactFont)
-                        .fontWeight(.regular)
-                }
-                .fixedSize()
+            HStack(spacing: 2) {
+                Image(systemName: "arrow.down")
+                    .foregroundColor(.blue)
+                    .font(.system(size: 8, weight: .semibold))
+                    .frame(width: 9, alignment: .center)
+                Text("\(downloadFormatted.value)\(downloadFormatted.unit)")
+                    .font(networkFont)
+                    .lineLimit(1)
             }
         }
-        .frame(width: 95)
+        .fixedSize()
         .monospacedDigit()
     }
 
     @ViewBuilder
     private func powerStatView() -> some View {
-        let watts = systemMonitor.powerConsumptionInfo.totalSystemPower
+        let watts = systemMonitor.dcInPower > 0 ? systemMonitor.dcInPower : systemMonitor.powerConsumptionInfo.totalSystemPower
         HStack(spacing: 3) {
             VStack(alignment: .center, spacing: compactSpacing) {
                 Text("PWR")
                     .font(compactFont)
-                Text(watts >= 100 ? String(format: "%.0fW", watts) : String(format: "%.1fW", watts))
+                Text(String(format: "%.0fW", watts))
                     .font(dataFont)
                     .foregroundColor(powerColor(for: watts))
             }
             if preferences.showMenuBarPowerChart {
                 SparklineView(data: systemMonitor.powerHistory, lineColor: powerColor(for: watts), lineWidth: 1.0,
                               fixedMin: 0)
-                    .frame(width: 28, height: 14)
+                    .frame(width: 28, height: 16)
             }
         }
         .frame(width: preferences.showMenuBarPowerChart ? 73 : 42)
@@ -274,7 +266,7 @@ struct MenuBarIconView: View {
             }
             if preferences.showMenuBarTempChart {
                 SparklineView(data: tempHistory, lineColor: tempColor(for: temp), lineWidth: 1.0)
-                    .frame(width: 28, height: 14)
+                    .frame(width: 28, height: 16)
             }
         }
         .frame(width: preferences.showMenuBarTempChart ? 73 : 42)
@@ -288,17 +280,21 @@ struct MenuBarIconView: View {
             VStack(alignment: .center, spacing: compactSpacing) {
                 Text("FAN")
                     .font(compactFont)
-                Text(rpm > 0 ? String(format: "%.0f", rpm) : "---")
+                Text(rpm > 0 ? formatRPM(rpm) : "---")
                     .font(dataFont)
             }
             if preferences.showMenuBarFanChart {
                 SparklineView(data: systemMonitor.fanHistory, lineColor: .cyan, lineWidth: 1.0,
                               fixedMin: 0)
-                    .frame(width: 28, height: 14)
+                    .frame(width: 28, height: 16)
             }
         }
         .frame(width: preferences.showMenuBarFanChart ? 73 : 42)
         .monospacedDigit()
+    }
+
+    private func formatRPM(_ rpm: Double) -> String {
+        rpm >= 1000 ? String(format: "%.1fk", rpm / 1000) : String(format: "%.0f", rpm)
     }
 
     private func powerColor(for watts: Double) -> Color {
