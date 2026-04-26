@@ -354,12 +354,21 @@ struct CardBasedStatsView: View {
                             Spacer()
                             
                             VStack(alignment: .trailing, spacing: 2) {
-                                Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .monospacedDigit()
-                                    .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
-                                    .glassTextVibrancy()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .monospacedDigit()
+                                        .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
+                                        .glassTextVibrancy()
+                                    if let target = systemMonitor.fanInfo.targetSpeeds.first {
+                                        Text(String(format: "Target: %d RPM", target))
+                                            .font(.caption2)
+                                            .monospacedDigit()
+                                            .foregroundColor(.secondary)
+                                            .glassTextVibrancy()
+                                    }
+                                }
                                 
                                 if systemMonitor.fanInfo.isEstimate {
                                     Text("Estimated")

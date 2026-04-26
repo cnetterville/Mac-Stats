@@ -154,8 +154,9 @@ struct FanInfo {
     let thermalState: Int
     let thermalPressure: String
     let maxRPM: Double
-    let speeds: [Int]       // individual fan RPMs (empty when estimated)
-    let maxSpeeds: [Int]    // individual fan max RPMs (empty when estimated)
+    let speeds: [Int]        // individual fan RPMs (empty when estimated)
+    let maxSpeeds: [Int]     // individual fan max RPMs (empty when estimated)
+    let targetSpeeds: [Int]  // individual fan target RPMs set by thermal management
 
     init() {
         self.rpm = 0.0
@@ -165,10 +166,11 @@ struct FanInfo {
         self.maxRPM = 6000.0
         self.speeds = []
         self.maxSpeeds = []
+        self.targetSpeeds = []
     }
 
     init(rpm: Double, isEstimate: Bool, thermalState: Int, thermalPressure: String,
-         maxRPM: Double = 6000.0, speeds: [Int] = [], maxSpeeds: [Int] = []) {
+         maxRPM: Double = 6000.0, speeds: [Int] = [], maxSpeeds: [Int] = [], targetSpeeds: [Int] = []) {
         self.rpm = rpm
         self.isEstimate = isEstimate
         self.thermalState = thermalState
@@ -176,6 +178,7 @@ struct FanInfo {
         self.maxRPM = maxRPM
         self.speeds = speeds
         self.maxSpeeds = maxSpeeds
+        self.targetSpeeds = targetSpeeds
     }
 }
 
@@ -1659,7 +1662,8 @@ class SystemMonitor: ObservableObject {
                 thermalPressure: thermalInfo.pressure,
                 maxRPM: maxRPM,
                 speeds: smoothedInts,
-                maxSpeeds: fanData.maxSpeeds
+                maxSpeeds: fanData.maxSpeeds,
+                targetSpeeds: fanData.targetSpeeds
             )
         }
 

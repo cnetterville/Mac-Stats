@@ -1212,6 +1212,7 @@ struct TabbedStatsView: View {
                         ForEach(0..<fanCount, id: \.self) { i in
                             let rpm = Double(fanSpeeds[i])
                             let label = fanCount == 1 ? "Fan Speed" : "Fan \(i + 1)"
+                            let targets = systemMonitor.fanInfo.targetSpeeds
 
                             HStack {
                                 HStack(spacing: 4) {
@@ -1223,11 +1224,19 @@ struct TabbedStatsView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 Spacer()
-                                Text(String(format: "%.0f RPM", rpm))
-                                    .font(.title3)
-                                    .fontWeight(.semibold)
-                                    .monospacedDigit()
-                                    .foregroundColor(fanSpeedColor(for: rpm))
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text(String(format: "%.0f RPM", rpm))
+                                        .font(.title3)
+                                        .fontWeight(.semibold)
+                                        .monospacedDigit()
+                                        .foregroundColor(fanSpeedColor(for: rpm))
+                                    if i < targets.count {
+                                        Text(String(format: "Target: %d RPM", targets[i]))
+                                            .font(.caption2)
+                                            .monospacedDigit()
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
                             }
 
                             if i < fanCount - 1 {

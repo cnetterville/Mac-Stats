@@ -2179,6 +2179,11 @@ struct PowerSectionView: View {
                             Text(String(format: "%.0f RPM", rpm))
                                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.blue)
+                            if let target = systemMonitor.fanInfo.targetSpeeds.first {
+                                Text(String(format: "→ %d tgt", target))
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(.secondary)
+                            }
                         }
                     }
                 }

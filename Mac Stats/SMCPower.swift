@@ -58,8 +58,9 @@ func readSMCCPUTemperature() -> Double? {
 }
 
 struct SMCFanData {
-    let speeds: [Int]    // actual RPM per fan
-    let maxSpeeds: [Int] // max RPM per fan (from F{n}Mx key)
+    let speeds: [Int]       // actual RPM per fan
+    let maxSpeeds: [Int]    // max RPM per fan (from F{n}Mx key)
+    let targetSpeeds: [Int] // target RPM per fan (from F{n}Tg key)
 }
 
 /// Returns actual and max RPM for each fan the SMC exposes on this Mac.
@@ -73,20 +74,32 @@ func readSMCFans() -> SMCFanData? {
 
         var speeds: [Int] = []
         var maxSpeeds: [Int] = []
+        var targetSpeeds: [Int] = []
         for i in 0..<count {
-            // F{n}Ac = actual speed, F{n}Mx = max speed
-            // Type fpe2: 2-byte big-endian fixed-point, divide by 4 for RPM
+            // F{n}Ac = actual speed, F{n}Mx = max speed, F{n}Tg = target speed
+            // Apple Silicon uses type flt (IEEE 754 float, 4 bytes).
+            // Older Intel Macs use fpe2 (2-byte big-endian fixed-point, divide by 4).
+            // smcRead returns the correct byte count from key info, so check size to pick decode.
             func readRPM(_ key: String) -> Int? {
-                guard let bytes = smcRead(conn, key: key, size: 2) else { return nil }
-                let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
-                let rpm = Int((Double(raw) / 4.0).rounded())
-                return rpm > 0 ? rpm : nil
+                guard let bytes = smcRead(conn, key: key, size: 4) else { return nil }
+                if bytes.count >= 4 {
+                    var value: Float32 = 0
+                    withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                    let rpm = Int(value.rounded())
+                    return rpm > 0 ? rpm : nil
+                } else if bytes.count >= 2 {
+                    let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
+                    let rpm = Int((Double(raw) / 4.0).rounded())
+                    return rpm > 0 ? rpm : nil
+                }
+                return nil
             }
             if let rpm = readRPM("F\(i)Ac") { speeds.append(rpm) }
             if let rpm = readRPM("F\(i)Mx") { maxSpeeds.append(rpm) }
+            if let rpm = readRPM("F\(i)Tg") { targetSpeeds.append(rpm) }
         }
         guard !speeds.isEmpty else { return nil }
-        return SMCFanData(speeds: speeds, maxSpeeds: maxSpeeds)
+        return SMCFanData(speeds: speeds, maxSpeeds: maxSpeeds, targetSpeeds: targetSpeeds)
     } ?? nil
 }
 
