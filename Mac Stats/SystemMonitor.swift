@@ -14,7 +14,7 @@ import IOKit.ps
 
 // Rename ProcessInfo to SystemProcessInfo to avoid conflict with Foundation's ProcessInfo
 struct SystemProcessInfo: Identifiable {
-    let id = UUID()
+    var id: Int32 { pid }
     let pid: Int32
     let name: String
     let cpuUsage: Double
@@ -23,7 +23,7 @@ struct SystemProcessInfo: Identifiable {
 
 // Struct to hold Process Network Information
 struct ProcessNetworkInfo: Identifiable {
-    let id = UUID()
+    var id: Int32 { pid }
     let pid: Int32
     let name: String
     let bytesIn: Double // bytes per second
@@ -39,7 +39,7 @@ struct ProcessNetworkInfo: Identifiable {
 
 // Struct to hold per-process disk I/O information
 struct ProcessDiskInfo: Identifiable {
-    let id = UUID()
+    var id: Int32 { pid }
     let pid: Int32
     let name: String
     let bytesRead: Double     // bytes/sec

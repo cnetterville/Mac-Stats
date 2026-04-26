@@ -222,8 +222,6 @@ struct MenuBarDropdownView: View {
                                 .environmentObject(systemMonitor)
                         }
                     }
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.2), value: selectedTab)
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -250,7 +248,6 @@ struct MenuBarDropdownView: View {
             .padding(.vertical, 8)
         }
         .frame(width: 320, height: 620)
-        .animation(.easeInOut(duration: 0.15), value: selectedTab)
     }
     
     private func dismissMenu() {
@@ -1429,6 +1426,7 @@ struct DiskSectionView: View {
             // Disk I/O Rate badges
             if systemMonitor.diskReadRate > 0 || systemMonitor.diskWriteRate > 0 {
                 HStack(spacing: 10) {
+                    Spacer()
                     HStack(spacing: 5) {
                         Image(systemName: "arrow.down.circle.fill")
                             .foregroundColor(.mint)
@@ -1458,6 +1456,7 @@ struct DiskSectionView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 16)
+                .padding(.top, 12)
             }
 
             // Top Disk Processes Section

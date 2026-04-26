@@ -1171,8 +1171,8 @@ struct CardBasedStatsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 EnhancedCardHeaderView(title: "Power Consumption", icon: "bolt.fill", color: .yellow)
 
-                if systemMonitor.powerConsumptionInfo.isEstimate {
-                    // macmon unavailable — show a clear explanation instead of fake numbers
+                if systemMonitor.powerConsumptionInfo.totalSystemPower == 0 && systemMonitor.dcInPower == 0 {
+                    // No power data available from any source
                     HStack(spacing: 12) {
                         Image(systemName: "bolt.slash.fill")
                             .foregroundColor(.secondary)
@@ -1192,24 +1192,26 @@ struct CardBasedStatsView: View {
                         Spacer()
                     }
                 } else {
-                    // Real-time data from macmon
+                    // Power data available from macmon or SMC
                     VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "power")
-                                .foregroundColor(.yellow)
-                                .font(.subheadline)
-                                .glassTextVibrancy()
-                            Text("Total System")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .glassTextVibrancy()
-                            Spacer()
-                            Text(String(format: "%.0f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
-                                .font(.subheadline)
-                                .fontWeight(.semibold)
-                                .monospacedDigit()
-                                .foregroundColor(.yellow)
-                                .glassTextVibrancy()
+                        if systemMonitor.powerConsumptionInfo.totalSystemPower > 0 {
+                            HStack {
+                                Image(systemName: "power")
+                                    .foregroundColor(.yellow)
+                                    .font(.subheadline)
+                                    .glassTextVibrancy()
+                                Text("Total System")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
+                                Spacer()
+                                Text(String(format: "%.0f W", systemMonitor.powerConsumptionInfo.totalSystemPower))
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .monospacedDigit()
+                                    .foregroundColor(.yellow)
+                                    .glassTextVibrancy()
+                            }
                         }
 
                         if systemMonitor.powerConsumptionInfo.cpuPower > 0 {
