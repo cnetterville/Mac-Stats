@@ -351,6 +351,14 @@ class SystemMonitor: ObservableObject {
     private var cachedPowerConsumption: PowerConsumptionInfo?
     private var lastPowerConsumptionUpdate: Date = Date.distantPast
     private var isFetchingPowerConsumption: Bool = false
+    private var previousProcessCPUTimes: [pid_t: (user: UInt64, system: UInt64, time: Date)] = [:]
+    private static let machTimeToSeconds: Double = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return Double(info.numer) / Double(info.denom) / 1_000_000_000.0
+    }()
+    private var cachedSPPowerOutput: (wattage: Int, type: String, model: String, isConnected: Bool)?
+    private var lastSPPowerUpdate: Date = Date.distantPast
 
     // Cache for battery details (system_profiler is slow — cache for 10 minutes)
     var cachedBatteryDetails: (cycleCount: Int, maxCapacity: Int)?
@@ -744,12 +752,34 @@ class SystemMonitor: ObservableObject {
         return (bytesIn: 0, bytesOut: 0)
     }
 
+    private func getAllInterfaceStats() -> [String: (bytesIn: UInt64, bytesOut: UInt64)] {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else { return [:] }
+        defer { freeifaddrs(ifaddr) }
+
+        var result: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
+        var ptr = ifaddr
+        while let current = ptr {
+            let addr = current.pointee
+            let name = String(cString: addr.ifa_name)
+            if addr.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
+               let data = addr.ifa_data?.assumingMemoryBound(to: if_data.self) {
+                result[name] = (
+                    bytesIn: UInt64(data.pointee.ifi_ibytes),
+                    bytesOut: UInt64(data.pointee.ifi_obytes)
+                )
+            }
+            ptr = addr.ifa_next
+        }
+        return result
+    }
+
     private func updateStats() {
         DispatchQueue.global(qos: .userInitiated).async {
             let group = DispatchGroup()
             let queue = DispatchQueue.global(qos: .userInitiated)
 
-            // Group 1: CPU sensors (fast Mach kernel calls)
+            // Group 1: CPU + sensors (single SMC connection for temp + fans)
             var cpu: Double = 0
             var cpuTemp: Double = 0
             var fan = FanInfo()
@@ -757,8 +787,14 @@ class SystemMonitor: ObservableObject {
             group.enter()
             queue.async {
                 cpu = self.getCurrentCPU()
-                cpuTemp = self.getCurrentCPUTemperature()
-                fan = self.getCurrentFanInfo()
+                let smcBatch = readSMCStatsBatch()
+                if let temp = smcBatch.cpuTemperature {
+                    cpuTemp = temp
+                    TemperatureMonitor.updateCache(temp)
+                } else {
+                    cpuTemp = self.getCurrentCPUTemperature()
+                }
+                fan = self.getCurrentFanInfo(smcFans: smcBatch.fans)
                 coreUsages = self.getPerCoreCPUUsage()
                 group.leave()
             }
@@ -874,10 +910,11 @@ class SystemMonitor: ObservableObject {
     // New method to update power consumption separately
     private func updatePowerConsumption() {
         DispatchQueue.global(qos: .userInitiated).async {
-            let powerConsumption = self.getCurrentPowerConsumption()
-            let gpuTemp  = readSMCGPUTemperature() ?? 0.0
-            let ssdTemp  = readSMCSSDTemperature() ?? 0.0
-            let dcInWatts = readSMCDCInPower() ?? 0.0
+            let smcPowerBatch = readSMCPowerBatch()
+            let powerConsumption = self.getCurrentPowerConsumption(smcSystemPower: smcPowerBatch.systemPower)
+            let gpuTemp  = smcPowerBatch.gpuTemperature ?? 0.0
+            let ssdTemp  = smcPowerBatch.ssdTemperature ?? 0.0
+            let dcInWatts = smcPowerBatch.dcInPower ?? 0.0
             DispatchQueue.main.async {
                 if abs(self.powerConsumptionInfo.totalSystemPower - powerConsumption.totalSystemPower) > 0.5 {
                     self.powerConsumptionInfo = powerConsumption
@@ -1119,6 +1156,8 @@ class SystemMonitor: ObservableObject {
         print(" Selected interface for monitoring: '\(selectedInterface)'")
         #endif
         
+        let allIfStats = getAllInterfaceStats()
+
         // Collect current stats for all interfaces
         var currentStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
         var totalBytesIn: UInt64 = 0
@@ -1134,9 +1173,9 @@ class SystemMonitor: ObservableObject {
             if interface == "bond0" && hasBondedInterfaces {
                 // For bond0, get its own stats directly rather than summing members
                 // This is because bonded member interfaces often don't report inbound stats correctly
-                let bond0Stats = getInterfaceStats(interface: "bond0")
-                let en0Stats = getInterfaceStats(interface: "en0")
-                let en1Stats = getInterfaceStats(interface: "en1")
+                let bond0Stats = allIfStats["bond0"] ?? (bytesIn: 0, bytesOut: 0)
+                let en0Stats = allIfStats["en0"] ?? (bytesIn: 0, bytesOut: 0)
+                let en1Stats = allIfStats["en1"] ?? (bytesIn: 0, bytesOut: 0)
                 
                 // Use bond0's inbound stats (which should be correct) and sum outbound from members
                 // If bond0 doesn't have good stats, fall back to summing members
@@ -1163,7 +1202,7 @@ class SystemMonitor: ObservableObject {
                 continue
             }
             
-            let stats = getInterfaceStats(interface: interface)
+            let stats = allIfStats[interface] ?? (bytesIn: 0, bytesOut: 0)
             currentStats[interface] = stats
             totalBytesIn += stats.bytesIn
             totalBytesOut += stats.bytesOut
@@ -1183,13 +1222,13 @@ class SystemMonitor: ObservableObject {
                 
                 if activeInterface == "bond0" && hasBondedInterfaces {
                     // For bond0 in combined calculation, sum en0 and en1
-                    let en0Stats = getInterfaceStats(interface: "en0")
-                    let en1Stats = getInterfaceStats(interface: "en1")
-                    
+                    let en0Stats = allIfStats["en0"] ?? (bytesIn: 0, bytesOut: 0)
+                    let en1Stats = allIfStats["en1"] ?? (bytesIn: 0, bytesOut: 0)
+
                     combinedBytesIn += en0Stats.bytesIn + en1Stats.bytesIn
                     combinedBytesOut += en0Stats.bytesOut + en1Stats.bytesOut
                 } else {
-                    let stats = getInterfaceStats(interface: activeInterface)
+                    let stats = allIfStats[activeInterface] ?? (bytesIn: 0, bytesOut: 0)
                     combinedBytesIn += stats.bytesIn
                     combinedBytesOut += stats.bytesOut
                 }
@@ -1236,9 +1275,9 @@ class SystemMonitor: ObservableObject {
                 }
             } else if selectedInterface == "bond0" && hasBondedInterfaces {
                 // For bond0, try to get the most accurate stats
-                let bond0Stats = self.getInterfaceStats(interface: "bond0")
-                let en0Stats = self.getInterfaceStats(interface: "en0")
-                let en1Stats = self.getInterfaceStats(interface: "en1")
+                let bond0Stats = allIfStats["bond0"] ?? (bytesIn: 0, bytesOut: 0)
+                let en0Stats = allIfStats["en0"] ?? (bytesIn: 0, bytesOut: 0)
+                let en1Stats = allIfStats["en1"] ?? (bytesIn: 0, bytesOut: 0)
                 
                 // Use bond0's inbound stats if available, otherwise sum members
                 // Always sum outbound from members for accuracy
@@ -1297,31 +1336,58 @@ class SystemMonitor: ObservableObject {
         return (upload: 0.0, download: 0.0)
     }
     
-    /// Runs a single /bin/ps and returns both CPU-sorted and memory-sorted top processes.
     private func getTopProcessesBoth(count: Int) -> (cpu: [SystemProcessInfo], memory: [SystemProcessInfo]) {
-        guard let output = executeCommand("/bin/ps", ["-A", "-o", "pid,%cpu,%mem,comm", "-c"]) else {
-            return ([], [])
-        }
+        let now = Date()
+        let byteCount = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+        guard byteCount > 0 else { return ([], []) }
 
-        let lines = output.split(separator: "\n").dropFirst()
+        var pidBuf = [pid_t](repeating: 0, count: Int(byteCount) / MemoryLayout<pid_t>.size + 1)
+        let actualBytes = pidBuf.withUnsafeMutableBytes { ptr -> Int32 in
+            proc_listpids(UInt32(PROC_ALL_PIDS), 0, ptr.baseAddress, Int32(ptr.count))
+        }
+        guard actualBytes > 0 else { return ([], []) }
+
+        let pidCount = Int(actualBytes) / MemoryLayout<pid_t>.size
+        let pids = pidBuf.prefix(pidCount).filter { $0 > 0 }
+        let totalMemory = Double(ProcessInfo.processInfo.physicalMemory)
+        let taskInfoSize = Int32(MemoryLayout<proc_taskinfo>.size)
+
         var cpuList: [SystemProcessInfo] = []
         var memList: [SystemProcessInfo] = []
-        cpuList.reserveCapacity(lines.count)
+        var newCPUTimes: [pid_t: (user: UInt64, system: UInt64, time: Date)] = [:]
+        newCPUTimes.reserveCapacity(pids.count)
 
-        for line in lines {
-            let components = line.split(separator: " ").compactMap { $0.isEmpty ? nil : String($0) }
-            guard components.count >= 4,
-                  let pid = Int32(components[0]),
-                  let cpu = Double(components[1].replacingOccurrences(of: "%", with: "")),
-                  let mem = Double(components[2].replacingOccurrences(of: "%", with: "")) else {
-                continue
+        for pid in pids {
+            var taskInfo = proc_taskinfo()
+            guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, taskInfoSize) == taskInfoSize else { continue }
+
+            let userTime = taskInfo.pti_total_user
+            let systemTime = taskInfo.pti_total_system
+            newCPUTimes[pid] = (user: userTime, system: systemTime, time: now)
+
+            let memPct = totalMemory > 0 ? (Double(taskInfo.pti_resident_size) / totalMemory) * 100.0 : 0.0
+            var cpuPct = 0.0
+            if let prev = previousProcessCPUTimes[pid] {
+                let elapsed = now.timeIntervalSince(prev.time)
+                if elapsed > 0.1 {
+                    let userDelta = userTime >= prev.user ? userTime - prev.user : 0
+                    let systemDelta = systemTime >= prev.system ? systemTime - prev.system : 0
+                    cpuPct = Double(userDelta + systemDelta) * Self.machTimeToSeconds / elapsed * 100.0
+                }
             }
-            let name = components[3...].joined(separator: " ")
-            let info = SystemProcessInfo(pid: pid, name: name, cpuUsage: cpu, memoryUsage: mem)
-            if cpu > Constants.minCpuUsageFilter { cpuList.append(info) }
-            if mem > Constants.minMemoryUsageFilter { memList.append(info) }
+
+            guard cpuPct > Constants.minCpuUsageFilter || memPct > Constants.minMemoryUsageFilter else { continue }
+            var nameBuf = [CChar](repeating: 0, count: 1024)
+            proc_name(pid, &nameBuf, UInt32(nameBuf.count))
+            let name = String(cString: nameBuf)
+            guard !name.isEmpty else { continue }
+
+            let info = SystemProcessInfo(pid: pid, name: name, cpuUsage: cpuPct, memoryUsage: memPct)
+            if cpuPct > Constants.minCpuUsageFilter { cpuList.append(info) }
+            if memPct > Constants.minMemoryUsageFilter { memList.append(info) }
         }
 
+        previousProcessCPUTimes = newCPUTimes
         return (
             cpu: Array(cpuList.sorted { $0.cpuUsage > $1.cpuUsage }.prefix(count)),
             memory: Array(memList.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count))
@@ -1637,11 +1703,11 @@ class SystemMonitor: ObservableObject {
         return (uptime: 0, bootTime: Date())
     }
     
-    private func getCurrentFanInfo() -> FanInfo {
+    private func getCurrentFanInfo(smcFans: SMCFanData? = nil) -> FanInfo {
         let thermalInfo = TemperatureMonitor.getThermalInfo()
 
         // Try real fan data from SMC first
-        if let fanData = readSMCFans(), !fanData.speeds.isEmpty {
+        if let fanData = smcFans ?? readSMCFans(), !fanData.speeds.isEmpty {
             // Apply EMA smoothing (alpha=0.4) to reduce SMC jitter.
             // Re-initialise smoothed array if fan count changes.
             let rawSpeeds = fanData.speeds.map(Double.init)
@@ -1875,7 +1941,7 @@ class SystemMonitor: ObservableObject {
         return BatteryInfo()
     }
     
-    private func getCurrentPowerConsumption() -> PowerConsumptionInfo {
+    private func getCurrentPowerConsumption(smcSystemPower: Double? = nil) -> PowerConsumptionInfo {
         // Check cache first to avoid excessive macmon calls
         let now = Date()
         if let cached = cachedPowerConsumption,
@@ -1894,7 +1960,7 @@ class SystemMonitor: ObservableObject {
         // Try macmon first
         var basePowerInfo: PowerConsumptionInfo
         
-        if let powerData = getPowerConsumptionFromMacmon() {
+        if let powerData = getPowerConsumptionFromMacmon(smcSystemPower: smcSystemPower) {
             basePowerInfo = powerData
         } else {
             basePowerInfo = estimatePowerConsumption()
@@ -1941,79 +2007,83 @@ class SystemMonitor: ObservableObject {
         return getAdapterInfoFromIOKit(systemPower: systemPower)
     }
     
-    // Get adapter info from system_profiler SPPowerDataType
+    // Get adapter info from system_profiler SPPowerDataType (cached for 5 min)
     private func getAdapterInfoFromSystemProfiler(systemPower: Double) -> PowerAdapterInfo? {
-        guard let output = executeCommand("/usr/sbin/system_profiler", ["SPPowerDataType"]) else {
-            return nil
-        }
-        
-        let lines = output.split(separator: "\n")
-        var wattage = 0
-        var type = "Unknown"
-        var model = "Unknown"
-        var isConnected = false
-        
-        for line in lines {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            
-            // Look for AC Charger Information
-            if trimmedLine.contains("AC Charger Information:") {
-                isConnected = true
+        let now = Date()
+
+        let parsed: (wattage: Int, type: String, model: String, isConnected: Bool)
+        if let cached = cachedSPPowerOutput, now.timeIntervalSince(lastSPPowerUpdate) < 300 {
+            parsed = cached
+        } else {
+            guard let output = executeCommand("/usr/sbin/system_profiler", ["SPPowerDataType"]) else {
+                return nil
             }
-            
-            // Look for wattage - various possible formats
-            if trimmedLine.contains("Wattage (W):") {
-                let components = trimmedLine.split(separator: ":")
-                if components.count > 1 {
-                    let wattageString = components[1].trimmingCharacters(in: .whitespaces)
-                    wattage = Int(wattageString) ?? 0
+
+            let lines = output.split(separator: "\n")
+            var wattage = 0
+            var type = "Unknown"
+            var model = "Unknown"
+            var isConnected = false
+
+            for line in lines {
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+
+                if trimmedLine.contains("AC Charger Information:") {
+                    isConnected = true
                 }
-            } else if trimmedLine.contains("Power Adapter:") {
-                let components = trimmedLine.split(separator: ":")
-                if components.count > 1 {
-                    model = components[1].trimmingCharacters(in: .whitespaces)
-                    
-                    // Extract wattage from model name like "96W USB-C Power Adapter"
-                    let wattagePattern = try? NSRegularExpression(pattern: "(\\d+)W", options: [])
-                    let range = NSRange(model.startIndex..<model.endIndex, in: model)
-                    if let match = wattagePattern?.firstMatch(in: model, options: [], range: range),
-                       let wattageRange = Range(match.range(at: 1), in: model) {
-                        wattage = Int(String(model[wattageRange])) ?? 0
+
+                if trimmedLine.contains("Wattage (W):") {
+                    let components = trimmedLine.split(separator: ":")
+                    if components.count > 1 {
+                        let wattageString = components[1].trimmingCharacters(in: .whitespaces)
+                        wattage = Int(wattageString) ?? 0
                     }
-                    
-                    // Determine adapter type from model
-                    if model.lowercased().contains("magsafe") {
-                        type = model.lowercased().contains("magsafe 3") ? "MagSafe 3" : "MagSafe"
-                    } else if model.lowercased().contains("usb-c") || model.lowercased().contains("usbc") {
-                        type = "USB-C"
-                    } else if model.lowercased().contains("lightning") {
-                        type = "Lightning"
+                } else if trimmedLine.contains("Power Adapter:") {
+                    let components = trimmedLine.split(separator: ":")
+                    if components.count > 1 {
+                        model = components[1].trimmingCharacters(in: .whitespaces)
+
+                        let wattagePattern = try? NSRegularExpression(pattern: "(\\d+)W", options: [])
+                        let range = NSRange(model.startIndex..<model.endIndex, in: model)
+                        if let match = wattagePattern?.firstMatch(in: model, options: [], range: range),
+                           let wattageRange = Range(match.range(at: 1), in: model) {
+                            wattage = Int(String(model[wattageRange])) ?? 0
+                        }
+
+                        if model.lowercased().contains("magsafe") {
+                            type = model.lowercased().contains("magsafe 3") ? "MagSafe 3" : "MagSafe"
+                        } else if model.lowercased().contains("usb-c") || model.lowercased().contains("usbc") {
+                            type = "USB-C"
+                        } else if model.lowercased().contains("lightning") {
+                            type = "Lightning"
+                        }
                     }
                 }
+
+                if trimmedLine.contains("Connected:") && trimmedLine.contains("Yes") {
+                    isConnected = true
+                }
             }
-            
-            // Look for charging status
-            if trimmedLine.contains("Connected:") && trimmedLine.contains("Yes") {
-                isConnected = true
-            }
+
+            let result = (wattage: wattage, type: type, model: model, isConnected: isConnected)
+            cachedSPPowerOutput = result
+            lastSPPowerUpdate = now
+            parsed = result
         }
-        
-        // If we found adapter info, calculate additional metrics
-        if isConnected && wattage > 0 {
-            let inputPower = calculateInputPower(systemPower: systemPower)
-            let efficiency = inputPower > 0 ? min((systemPower / inputPower) * 100, 100) : 0
-            
-            return PowerAdapterInfo(
-                isConnected: isConnected,
-                wattage: wattage,
-                type: type,
-                inputPower: inputPower,
-                efficiency: efficiency,
-                model: model
-            )
-        }
-        
-        return nil
+
+        guard parsed.isConnected && parsed.wattage > 0 else { return nil }
+
+        let inputPower = calculateInputPower(systemPower: systemPower)
+        let efficiency = inputPower > 0 ? min((systemPower / inputPower) * 100, 100) : 0
+
+        return PowerAdapterInfo(
+            isConnected: parsed.isConnected,
+            wattage: parsed.wattage,
+            type: parsed.type,
+            inputPower: inputPower,
+            efficiency: efficiency,
+            model: parsed.model
+        )
     }
     
     // Get adapter info from IOKit (fallback)
@@ -2124,12 +2194,12 @@ class SystemMonitor: ObservableObject {
         return systemPower
     }
     
-    private func getPowerConsumptionFromMacmon() -> PowerConsumptionInfo? {
+    private func getPowerConsumptionFromMacmon(smcSystemPower: Double? = nil) -> PowerConsumptionInfo? {
         // Primary: call libIOReport directly — no subprocess, no session restrictions
         if let sample = sampleIOReportPower(intervalMs: 300) {
             // SMC "PSTR" gives total wall power (display, storage, fans, etc.)
             // Take the max of SMC and SoC power, matching macmon's sys_power logic.
-            let smcPower = readSMCSystemPower() ?? 0.0
+            let smcPower = smcSystemPower ?? readSMCSystemPower() ?? 0.0
             let totalPower = max(smcPower, sample.total)
             return PowerConsumptionInfo(
                 cpuPower: sample.cpu,

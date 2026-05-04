@@ -19,7 +19,12 @@ class TemperatureMonitor {
     
     // Prevent concurrent macmon executions
     private static var isFetchingTemperature = false
-    
+
+    static func updateCache(_ temperature: Double) {
+        lastTemperature = temperature
+        lastTemperatureTime = Date()
+    }
+
     // Main method to get average CPU temperature
     static func averageCPUTemperature() -> Double {
         // Check cache first

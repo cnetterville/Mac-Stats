@@ -145,6 +145,125 @@ func readSMCDCInPower() -> Double? {
     }
 }
 
+// MARK: - Batch reads (single SMC connection for multiple keys)
+
+struct SMCStatsBatch {
+    let cpuTemperature: Double?
+    let fans: SMCFanData?
+}
+
+func readSMCStatsBatch() -> SMCStatsBatch {
+    withSMCConnection { conn in
+        let cpuTemp: Double? = {
+            let keys = [
+                "Tp01", "Tp05", "Tp09", "Tp0D", "Tp0X", "Tp0b", "Tp0f", "Tp0j",
+                "Te05", "Te09"
+            ]
+            var temps: [Double] = []
+            for key in keys {
+                guard let bytes = smcRead(conn, key: key, size: 4) else { continue }
+                let celsius: Double
+                if bytes.count >= 4 {
+                    var value: Float32 = 0
+                    withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                    celsius = Double(value)
+                } else if bytes.count >= 2 {
+                    let raw = Int16(bitPattern: (UInt16(bytes[0]) << 8) | UInt16(bytes[1]))
+                    celsius = Double(raw) / 256.0
+                } else {
+                    continue
+                }
+                if celsius >= 20 && celsius < 120 { temps.append(celsius) }
+            }
+            guard !temps.isEmpty else { return nil }
+            return temps.reduce(0, +) / Double(temps.count)
+        }()
+
+        let fans: SMCFanData? = {
+            guard let b = smcRead(conn, key: "FNum", size: 1) else { return nil }
+            let count = Int(b[0])
+            guard count > 0 && count < 20 else { return nil }
+            var speeds: [Int] = []
+            var maxSpeeds: [Int] = []
+            var targetSpeeds: [Int] = []
+            for i in 0..<count {
+                func readRPM(_ key: String) -> Int? {
+                    guard let bytes = smcRead(conn, key: key, size: 4) else { return nil }
+                    if bytes.count >= 4 {
+                        var value: Float32 = 0
+                        withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                        let rpm = Int(value.rounded())
+                        return rpm > 0 ? rpm : nil
+                    } else if bytes.count >= 2 {
+                        let raw = (UInt16(bytes[0]) << 8) | UInt16(bytes[1])
+                        let rpm = Int((Double(raw) / 4.0).rounded())
+                        return rpm > 0 ? rpm : nil
+                    }
+                    return nil
+                }
+                if let rpm = readRPM("F\(i)Ac") { speeds.append(rpm) }
+                if let rpm = readRPM("F\(i)Mx") { maxSpeeds.append(rpm) }
+                if let rpm = readRPM("F\(i)Tg") { targetSpeeds.append(rpm) }
+            }
+            guard !speeds.isEmpty else { return nil }
+            return SMCFanData(speeds: speeds, maxSpeeds: maxSpeeds, targetSpeeds: targetSpeeds)
+        }()
+
+        return SMCStatsBatch(cpuTemperature: cpuTemp, fans: fans)
+    } ?? SMCStatsBatch(cpuTemperature: nil, fans: nil)
+}
+
+struct SMCPowerBatch {
+    let systemPower: Double?
+    let gpuTemperature: Double?
+    let ssdTemperature: Double?
+    let dcInPower: Double?
+}
+
+func readSMCPowerBatch() -> SMCPowerBatch {
+    withSMCConnection { conn in
+        let systemPower: Double? = {
+            guard let bytes = smcRead(conn, key: "PSTR", size: 4) else { return nil }
+            var v: Float32 = 0
+            withUnsafeMutableBytes(of: &v) { $0.copyBytes(from: bytes) }
+            let w = Double(v)
+            return w > 0 ? w : nil
+        }()
+
+        let gpuTemp: Double? = {
+            for key in ["Tg0D", "Tg1D", "TG0D", "TG0P"] {
+                guard let bytes = smcRead(conn, key: key, size: 4), bytes.count >= 4 else { continue }
+                var value: Float32 = 0
+                withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                let celsius = Double(value)
+                if celsius >= 20 && celsius < 120 { return celsius }
+            }
+            return nil
+        }()
+
+        let ssdTemp: Double? = {
+            for key in ["TH0x", "TH0P", "TH1P", "TS0D", "TS0S"] {
+                guard let bytes = smcRead(conn, key: key, size: 4), bytes.count >= 4 else { continue }
+                var value: Float32 = 0
+                withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                let celsius = Double(value)
+                if celsius >= 20 && celsius < 100 { return celsius }
+            }
+            return nil
+        }()
+
+        let dcIn: Double? = {
+            guard let bytes = smcRead(conn, key: "PDTR", size: 4), bytes.count >= 4 else { return nil }
+            var value: Float32 = 0
+            withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+            let watts = Double(value)
+            return watts > 0 ? watts : nil
+        }()
+
+        return SMCPowerBatch(systemPower: systemPower, gpuTemperature: gpuTemp, ssdTemperature: ssdTemp, dcInPower: dcIn)
+    } ?? SMCPowerBatch(systemPower: nil, gpuTemperature: nil, ssdTemperature: nil, dcInPower: nil)
+}
+
 // MARK: - Connection helper
 
 private func withSMCConnection<T>(_ body: (io_connect_t) -> T?) -> T? {
