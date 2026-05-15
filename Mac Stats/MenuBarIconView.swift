@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct MenuBarIconView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     
     private let compactFont = Font.system(size: 9, weight: .regular, design: .monospaced)

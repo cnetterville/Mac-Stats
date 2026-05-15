@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var preferences: PreferencesManager
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var externalIPManager: ExternalIPManager
     
     @State private var isTestingEmail = false
@@ -176,7 +176,7 @@ struct SettingsView: View {
 
 struct NetworkSettingsView: View {
     @EnvironmentObject var preferences: PreferencesManager
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     
     // Use local state instead of directly observing ExternalIPManager to avoid cycles
     @State private var currentIP: String = ""

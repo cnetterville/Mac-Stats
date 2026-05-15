@@ -11,7 +11,7 @@ import ServiceManagement
 
 @main
 struct Mac_StatsApp: App {
-    @StateObject private var systemMonitor = SystemMonitor()
+    @State private var systemMonitor = SystemMonitor()
     @StateObject private var preferences = PreferencesManager()
     @StateObject private var imageManager = MenuBarImageManager()
     @StateObject private var wifiManager = WiFiManager()
@@ -25,7 +25,7 @@ struct Mac_StatsApp: App {
         MenuBarExtra {
             // Simplified menu for quick access with environment access
             MenuBarDropdownView()
-                .environmentObject(systemMonitor)
+                .environment(systemMonitor)
                 .environmentObject(preferences)
                 .environmentObject(ExternalIPManager.shared)
                 .environmentObject(wifiManager)
@@ -48,7 +48,7 @@ struct Mac_StatsApp: App {
                         .environmentObject(imageManager)
                 }
             }
-            .environmentObject(systemMonitor)
+            .environment(systemMonitor)
             .environmentObject(preferences)
             .environmentObject(ExternalIPManager.shared)
             .environmentObject(wifiManager)
@@ -68,7 +68,7 @@ struct Mac_StatsApp: App {
         Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(preferences)
-                .environmentObject(systemMonitor)
+                .environment(systemMonitor)
                 .environmentObject(ExternalIPManager.shared)
                 .environmentObject(wifiManager)
                 .frame(width: 450, height: 600)
@@ -118,7 +118,7 @@ struct Mac_StatsApp: App {
 // New dropdown menu view for the menu bar extra
 struct MenuBarDropdownView: View {
     @Environment(\.openWindow) private var openWindow
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     @State private var selectedTab: MonitorTab = .cpu
     
@@ -215,19 +215,19 @@ struct MenuBarDropdownView: View {
                         switch selectedTab {
                         case .cpu:
                             CPUSectionView(openWindow: openWindow)
-                                .environmentObject(systemMonitor)
+                                .environment(systemMonitor)
                         case .memory:
                             MemorySectionView(openWindow: openWindow)
-                                .environmentObject(systemMonitor)
+                                .environment(systemMonitor)
                         case .network:
                             NetworkSectionView(openWindow: openWindow)
-                                .environmentObject(systemMonitor)
+                                .environment(systemMonitor)
                         case .disk:
                             DiskSectionView()
-                                .environmentObject(systemMonitor)
+                                .environment(systemMonitor)
                         case .power:
                             PowerSectionView()
-                                .environmentObject(systemMonitor)
+                                .environment(systemMonitor)
                         }
                     }
                 }
@@ -267,7 +267,7 @@ struct MenuBarDropdownView: View {
 
 // CPU Section
 struct CPUSectionView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     let openWindow: OpenWindowAction
     
@@ -584,7 +584,7 @@ struct ProcessRowView: View {
 
 // Memory Section - Polished design matching CPU section
 struct MemorySectionView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     let openWindow: OpenWindowAction
     
     private var memoryPercent: Double {
@@ -917,7 +917,7 @@ struct MemoryProcessRowView: View {
 
 // Network Section - Polished design matching CPU and Memory sections
 struct NetworkSectionView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var externalIPManager: ExternalIPManager
     let openWindow: OpenWindowAction
     
@@ -1258,7 +1258,7 @@ struct NetworkSectionView: View {
 
 // Disk Section
 struct DiskSectionView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     
     private var usedDisk: Double {
         systemMonitor.diskUsage.total - systemMonitor.diskUsage.free
@@ -2081,7 +2081,7 @@ struct MemorySparklineView: View {
 
 // Power Section
 struct PowerSectionView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
 
     private var watts: Double { systemMonitor.powerConsumptionInfo.totalSystemPower }
@@ -2436,7 +2436,7 @@ struct MenuBarLabelView: View {
             )
             
             // Subscribe to system monitor changes to update menu bar image
-            systemMonitor.objectWillChange
+            systemMonitor.didUpdate
                 .sink { _ in
                     DispatchQueue.main.async {
                         imageManager.forceImageUpdate()

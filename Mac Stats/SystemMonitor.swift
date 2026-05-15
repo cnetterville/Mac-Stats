@@ -11,6 +11,7 @@ import Darwin
 import AppKit
 import IOKit
 import IOKit.ps
+import Combine
 
 // Rename ProcessInfo to SystemProcessInfo to avoid conflict with Foundation's ProcessInfo
 struct SystemProcessInfo: Identifiable {
@@ -266,7 +267,8 @@ struct PowerConsumptionInfo {
     }
 }
 
-class SystemMonitor: ObservableObject {
+@Observable
+class SystemMonitor {
     // MARK: - Constants
     private struct Constants {
         static let maxHistoryPoints = 30
@@ -294,38 +296,44 @@ class SystemMonitor: ObservableObject {
     }
     
     // MARK: - Published Properties
-    @Published var cpuUsage: Double = 0.0
-    @Published var cpuTemperature: Double = 0.0
-    @Published var fanInfo: FanInfo = FanInfo() // Add fan information
-    @Published var memoryUsage: (used: Double, total: Double) = (0.0, 0.0)
-    @Published var diskUsage: (free: Double, total: Double, purgeable: Double) = (0.0, 0.0, 0.0)
-    @Published var networkUsage: (upload: Double, download: Double) = (0.0, 0.0)
-    @Published var networkInterfaces: [String] = []
-    @Published var topProcesses: [SystemProcessInfo] = []
-    @Published var topMemoryProcesses: [SystemProcessInfo] = []
-    @Published var topNetworkProcesses: [ProcessNetworkInfo] = []
-    @Published var topDiskProcesses: [ProcessDiskInfo] = []
-    @Published var upsInfo: UPSInfo = UPSInfo() // UPS information
-    @Published var batteryInfo: BatteryInfo = BatteryInfo() // Battery information
-    @Published var systemInfo: SystemInfo = SystemInfo() // System information
-    @Published var powerConsumptionInfo: PowerConsumptionInfo = PowerConsumptionInfo() // Power consumption information
-    @Published var initialDataLoaded: Bool = false
-    @Published var gpuTemperature: Double = 0.0
-    @Published var ssdTemperature: Double = 0.0
-    @Published var dcInPower: Double = 0.0
-    @Published var diskReadRate: Double = 0.0
-    @Published var diskWriteRate: Double = 0.0
-    @Published var cpuCoreUsages: [Double] = []
-    @Published var pCoreCount: Int = 0
-    @Published var eCoreCount: Int = 0
-    @Published var cpuHistory: [Double] = []
-    @Published var cpuTemperatureHistory: [Double] = []
-    @Published var memoryHistory: [Double] = []
-    @Published var powerHistory: [Double] = []
-    @Published var fanHistory: [Double] = []
-    @Published var uploadHistory: [Double] = []
-    @Published var downloadHistory: [Double] = []
-    
+    var cpuUsage: Double = 0.0
+    var cpuTemperature: Double = 0.0
+    var fanInfo: FanInfo = FanInfo() // Add fan information
+    var memoryUsage: (used: Double, total: Double) = (0.0, 0.0)
+    var diskUsage: (free: Double, total: Double, purgeable: Double) = (0.0, 0.0, 0.0)
+    var networkUsage: (upload: Double, download: Double) = (0.0, 0.0)
+    var networkInterfaces: [String] = []
+    var topProcesses: [SystemProcessInfo] = []
+    var topMemoryProcesses: [SystemProcessInfo] = []
+    var topNetworkProcesses: [ProcessNetworkInfo] = []
+    var topDiskProcesses: [ProcessDiskInfo] = []
+    var upsInfo: UPSInfo = UPSInfo() // UPS information
+    var batteryInfo: BatteryInfo = BatteryInfo() // Battery information
+    var systemInfo: SystemInfo = SystemInfo() // System information
+    var powerConsumptionInfo: PowerConsumptionInfo = PowerConsumptionInfo() // Power consumption information
+    var initialDataLoaded: Bool = false
+    var gpuTemperature: Double = 0.0
+    var ssdTemperature: Double = 0.0
+    var dcInPower: Double = 0.0
+    var diskReadRate: Double = 0.0
+    var diskWriteRate: Double = 0.0
+    var cpuCoreUsages: [Double] = []
+    var pCoreCount: Int = 0
+    var eCoreCount: Int = 0
+    var cpuHistory: [Double] = []
+    var cpuTemperatureHistory: [Double] = []
+    var memoryHistory: [Double] = []
+    var powerHistory: [Double] = []
+    var fanHistory: [Double] = []
+    var uploadHistory: [Double] = []
+    var downloadHistory: [Double] = []
+
+    /// Fires once per updateStats tick on the main thread. Used by legacy Combine
+    /// subscribers (MenuBarImageManager, MenuBarLabelView) that still need an
+    /// explicit "something updated" signal — @Observable removes objectWillChange.
+    @ObservationIgnored
+    let didUpdate = PassthroughSubject<Void, Never>()
+
     // MARK: - Private Properties
     private var previousUPSPowerState: Bool = false
     private var lastUPSPowerNotificationTime: Date?
@@ -797,83 +805,57 @@ class SystemMonitor: ObservableObject {
     }
 
     private func updateStats() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let group = DispatchGroup()
-            let queue = DispatchQueue.global(qos: .userInitiated)
+        // Run all independent data collectors as concurrent child tasks via `async let`.
+        // The outer task suspends rather than blocking a GCD thread on a DispatchGroup wait.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
 
-            // Group 1: CPU + sensors (single SMC connection for temp + fans)
-            var cpu: Double = 0
-            var cpuTemp: Double = 0
-            var fan = FanInfo()
-            var coreUsages: [Double] = []
-            group.enter()
-            queue.async {
-                cpu = self.getCurrentCPU()
+            async let cpuGroup: (cpu: Double, cpuTemp: Double, fan: FanInfo, coreUsages: [Double]) = {
+                let cpu = self.getCurrentCPU()
                 let smcBatch = readSMCStatsBatch()
+                let cpuTemp: Double
                 if let temp = smcBatch.cpuTemperature {
                     cpuTemp = temp
                     TemperatureMonitor.updateCache(temp)
                 } else {
                     cpuTemp = self.getCurrentCPUTemperature()
                 }
-                fan = self.getCurrentFanInfo(smcFans: smcBatch.fans)
-                coreUsages = self.getPerCoreCPUUsage()
-                group.leave()
-            }
+                let fan = self.getCurrentFanInfo(smcFans: smcBatch.fans)
+                let coreUsages = self.getPerCoreCPUUsage()
+                return (cpu, cpuTemp, fan, coreUsages)
+            }()
 
-            // Group 2: Memory + Disk (independent filesystem/VM calls)
-            var memory: (used: Double, total: Double) = (0, 0)
-            var disk: (free: Double, total: Double, purgeable: Double) = (0, 0, 0)
-            var diskIO: (readMBps: Double, writeMBps: Double) = (0, 0)
-            group.enter()
-            queue.async {
-                memory = self.getCurrentMemory()
-                disk = self.getCurrentDisk()
-                diskIO = self.getDiskIORate()
-                group.leave()
-            }
+            async let memDiskGroup: (memory: (used: Double, total: Double),
+                                     disk: (free: Double, total: Double, purgeable: Double),
+                                     diskIO: (readMBps: Double, writeMBps: Double)) = (
+                memory: self.getCurrentMemory(),
+                disk: self.getCurrentDisk(),
+                diskIO: self.getDiskIORate()
+            )
 
-            // Group 3: Network interface byte counters
-            var network: (upload: Double, download: Double) = (0, 0)
-            group.enter()
-            queue.async {
-                network = self.getCurrentNetwork()
-                group.leave()
-            }
+            async let network: (upload: Double, download: Double) = self.getCurrentNetwork()
 
-            // Group 4: Process list — single ps call returning both CPU and memory sorted lists
-            var processes: [SystemProcessInfo] = []
-            var memoryProcesses: [SystemProcessInfo] = []
-            group.enter()
-            queue.async {
-                let both = self.getTopProcessesBoth(count: Constants.processCountThreshold)
-                processes = both.cpu
-                memoryProcesses = both.memory
-                group.leave()
-            }
+            async let procs: (cpu: [SystemProcessInfo], memory: [SystemProcessInfo]) =
+                self.getTopProcessesBoth(count: Constants.processCountThreshold)
 
-            // Group 5: Battery + UPS — share a single IOPSCopyPowerSourcesInfo blob
-            var ups = UPSInfo()
-            var battery = BatteryInfo()
-            group.enter()
-            queue.async {
+            async let powerSources: (battery: BatteryInfo, ups: UPSInfo) = {
                 let powerBlob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue()
-                battery = self.getCurrentBatteryInfo(blob: powerBlob)
-                ups = self.getCurrentUPSInfo(blob: powerBlob)
-                group.leave()
-            }
+                return (
+                    battery: self.getCurrentBatteryInfo(blob: powerBlob),
+                    ups: self.getCurrentUPSInfo(blob: powerBlob)
+                )
+            }()
 
-            // Group 6: System info (may hit cache, occasionally slow)
-            var systemInfo = SystemInfo()
-            group.enter()
-            queue.async {
-                systemInfo = self.getCachedOrFreshSystemInfo()
-                group.leave()
-            }
+            async let sysInfo: SystemInfo = self.getCachedOrFreshSystemInfo()
 
-            group.wait()
+            let (cpu, cpuTemp, fan, coreUsages) = await cpuGroup
+            let memDisk = await memDiskGroup
+            let net = await network
+            let processList = await procs
+            let (battery, ups) = await powerSources
+            let systemInfo = await sysInfo
 
-            // Network process list uses its own counter/cache (kept sequential)
+            // Network/disk process lists use their own counter/cache (kept sequential).
             self.networkProcessUpdateCounter += 1
             let networkProcesses: [ProcessNetworkInfo]
             if self.networkProcessUpdateCounter >= Int(Constants.networkProcessUpdateInterval / self.updateInterval) {
@@ -884,7 +866,6 @@ class SystemMonitor: ObservableObject {
                 networkProcesses = self.cachedNetworkProcesses
             }
 
-            // Disk process list — same pattern as network processes
             self.diskProcessUpdateCounter += 1
             let diskProcesses: [ProcessDiskInfo]
             if self.diskProcessUpdateCounter >= Int(Constants.diskProcessUpdateInterval / self.updateInterval) {
@@ -895,11 +876,11 @@ class SystemMonitor: ObservableObject {
                 diskProcesses = self.cachedDiskProcesses
             }
 
-            DispatchQueue.main.async {
+            await MainActor.run {
                 self.updateCPUHistory(with: cpu)
                 self.updateCPUTemperatureHistory(with: cpuTemp)
-                self.updateNetworkHistory(upload: network.upload, download: network.download)
-                let memPct = memory.total > 0 ? (memory.used / memory.total) * 100.0 : 0.0
+                self.updateNetworkHistory(upload: net.upload, download: net.download)
+                let memPct = memDisk.memory.total > 0 ? (memDisk.memory.used / memDisk.memory.total) * 100.0 : 0.0
                 self.updateMemoryHistory(with: memPct)
                 self.updateFanHistory(with: fan.rpm)
 
@@ -907,14 +888,14 @@ class SystemMonitor: ObservableObject {
                 if abs(self.cpuUsage - cpu) > 0.1 { self.cpuUsage = cpu }
                 if abs(self.cpuTemperature - cpuTemp) > 0.5 { self.cpuTemperature = cpuTemp }
                 if self.fanInfo.speeds != fan.speeds || abs(self.fanInfo.rpm - fan.rpm) > 50 { self.fanInfo = fan }
-                if abs(self.memoryUsage.used - memory.used) > 50_000_000 { self.memoryUsage = memory }
-                if abs(self.diskUsage.free - disk.free) > 100_000_000 { self.diskUsage = disk }
+                if abs(self.memoryUsage.used - memDisk.memory.used) > 50_000_000 { self.memoryUsage = memDisk.memory }
+                if abs(self.diskUsage.free - memDisk.disk.free) > 100_000_000 { self.diskUsage = memDisk.disk }
                 if !coreUsages.isEmpty { self.cpuCoreUsages = coreUsages }
-                if abs(self.diskReadRate - diskIO.readMBps) > 0.05 { self.diskReadRate = diskIO.readMBps }
-                if abs(self.diskWriteRate - diskIO.writeMBps) > 0.05 { self.diskWriteRate = diskIO.writeMBps }
-                self.networkUsage = network   // always assign — fluctuates every tick when active
-                self.topProcesses = processes
-                self.topMemoryProcesses = memoryProcesses
+                if abs(self.diskReadRate - memDisk.diskIO.readMBps) > 0.05 { self.diskReadRate = memDisk.diskIO.readMBps }
+                if abs(self.diskWriteRate - memDisk.diskIO.writeMBps) > 0.05 { self.diskWriteRate = memDisk.diskIO.writeMBps }
+                self.networkUsage = net   // always assign — fluctuates every tick when active
+                self.topProcesses = processList.cpu
+                self.topMemoryProcesses = processList.memory
                 self.topNetworkProcesses = networkProcesses
                 self.topDiskProcesses = diskProcesses
                 if abs(self.batteryInfo.chargeLevel - battery.chargeLevel) > 0.5
@@ -925,6 +906,7 @@ class SystemMonitor: ObservableObject {
                 self.initialDataLoaded = true
 
                 self.checkAndNotifyUPSPowerChange()
+                self.didUpdate.send()
             }
         }
     }

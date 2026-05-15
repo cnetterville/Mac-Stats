@@ -39,7 +39,7 @@ class MenuBarImageManager: ObservableObject {
         self.preferences = preferences
         
         // Subscribe to all relevant publishers with async updates
-        systemMonitor.objectWillChange
+        systemMonitor.didUpdate
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -153,7 +153,7 @@ class MenuBarImageManager: ObservableObject {
             
             await MainActor.run {
                 let view = MenuBarIconView()
-                    .environmentObject(systemMonitor)
+                    .environment(systemMonitor)
                     .environmentObject(preferences)
                     .environmentObject(ExternalIPManager.shared)
                     .padding(.horizontal, 0)

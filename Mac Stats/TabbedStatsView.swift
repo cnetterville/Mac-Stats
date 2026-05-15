@@ -48,7 +48,7 @@ enum StatsCategory: String, CaseIterable {
 }
 
 struct TabbedStatsView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var externalIPManager: ExternalIPManager
     @EnvironmentObject var imageManager: MenuBarImageManager

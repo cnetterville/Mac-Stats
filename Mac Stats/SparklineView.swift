@@ -6,8 +6,9 @@
 //
 
 import SwiftUI
+import Charts
 
-// Simple sparkline view for single data series
+// Single-series sparkline using Swift Charts.
 struct SparklineView: View {
     let data: [Double]
     let lineColor: Color
@@ -24,142 +25,104 @@ struct SparklineView: View {
         self.fixedMax = fixedMax
     }
 
-    private func points(in size: CGSize) -> [CGPoint] {
-        guard data.count >= 2 else { return [] }
-        let maxValue = fixedMax ?? data.max() ?? 1
-        let minValue = fixedMin ?? data.min() ?? 0
-        let range = maxValue - minValue
-        let effectiveRange = range > 0 ? range : 1
-        let stepX = size.width / CGFloat(data.count - 1)
-        return data.enumerated().map { index, value in
-            let x = CGFloat(index) * stepX
-            let normalizedValue = (value - minValue) / effectiveRange
-            let y = size.height * (1 - normalizedValue)
-            return CGPoint(x: x, y: y)
-        }
-    }
-
-    // Smooth line using midpoint-quadratic bezier
-    private func smoothLinePath(pts: [CGPoint]) -> Path {
-        var path = Path()
-        guard pts.count >= 2 else { return path }
-        path.move(to: pts[0])
-        if pts.count == 2 {
-            path.addLine(to: pts[1])
-        } else {
-            for i in 1..<pts.count - 1 {
-                let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
-                                  y: (pts[i].y + pts[i + 1].y) / 2)
-                path.addQuadCurve(to: mid, control: pts[i])
-            }
-            path.addLine(to: pts[pts.count - 1])
-        }
-        return path
-    }
-
-    // Closed fill path: smooth line + drop to bottom corners
-    private func fillPath(pts: [CGPoint], height: CGFloat) -> Path {
-        var path = smoothLinePath(pts: pts)
-        guard let last = pts.last, let first = pts.first else { return path }
-        path.addLine(to: CGPoint(x: last.x, y: height))
-        path.addLine(to: CGPoint(x: first.x, y: height))
-        path.closeSubpath()
-        return path
+    private var yDomain: ClosedRange<Double> {
+        let lo = fixedMin ?? data.min() ?? 0
+        let hi = fixedMax ?? data.max() ?? 1
+        return lo == hi ? lo...(lo + 1) : lo...hi
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            if data.count < 2 {
-                Rectangle().fill(Color.clear)
-            } else {
-                let pts = points(in: geometry.size)
-                ZStack {
-                    // Subtle baseline at the bottom of the chart
-                    Path { path in
-                        let y = geometry.size.height - 0.5
-                        path.move(to: CGPoint(x: 0, y: y))
-                        path.addLine(to: CGPoint(x: geometry.size.width, y: y))
-                    }
-                    .stroke(lineColor.opacity(0.25), lineWidth: 0.5)
-
-                    // Gradient fill under the line
-                    fillPath(pts: pts, height: geometry.size.height)
-                        .fill(LinearGradient(
+        if data.count < 2 {
+            Rectangle().fill(Color.clear)
+        } else {
+            Chart {
+                ForEach(Array(data.enumerated()), id: \.offset) { index, value in
+                    AreaMark(
+                        x: .value("i", index),
+                        y: .value("v", value)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(
+                        LinearGradient(
                             colors: [lineColor.opacity(0.45), lineColor.opacity(0.0)],
                             startPoint: .top,
                             endPoint: .bottom
-                        ))
+                        )
+                    )
 
-                    // Smooth line on top
-                    smoothLinePath(pts: pts)
-                        .stroke(lineColor,
-                                style: StrokeStyle(lineWidth: lineWidth,
-                                                   lineCap: .round,
-                                                   lineJoin: .round))
+                    LineMark(
+                        x: .value("i", index),
+                        y: .value("v", value)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(lineColor)
+                    .lineStyle(StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+                }
 
-                    // Trailing dot with soft glow at the current (rightmost) value
-                    if let lastPt = pts.last {
-                        Circle()
-                            .fill(lineColor)
-                            .frame(width: 3, height: 3)
-                            .shadow(color: lineColor.opacity(0.85), radius: 3, x: 0, y: 0)
-                            .position(lastPt)
-                    }
+                if let last = data.last {
+                    PointMark(
+                        x: .value("i", data.count - 1),
+                        y: .value("v", last)
+                    )
+                    .foregroundStyle(lineColor)
+                    .symbolSize(20)
                 }
             }
+            .chartLegend(.hidden)
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .chartXScale(domain: 0...(data.count - 1))
+            .chartYScale(domain: yDomain)
+            .chartPlotStyle { $0.background(Color.clear) }
         }
     }
 }
 
-// Multi-series sparkline view for multiple data series
+// Multi-series sparkline using Swift Charts.
 struct MultiSeriesSparklineView: View {
     let series: [(data: [Double], color: Color)]
     let lineWidth: CGFloat
-    
+
     init(series: [(data: [Double], color: Color)], lineWidth: CGFloat = 2.0) {
         self.series = series
         self.lineWidth = lineWidth
     }
-    
+
+    private var allValues: [Double] { series.flatMap { $0.data } }
+
+    private var yDomain: ClosedRange<Double> {
+        let lo = allValues.min() ?? 0
+        let hi = allValues.max() ?? 1
+        return lo == hi ? lo...(lo + 1) : lo...hi
+    }
+
+    private var maxSamples: Int {
+        series.map { $0.data.count }.max() ?? 0
+    }
+
     var body: some View {
-        GeometryReader { geometry in
-            // Find global min/max across all series for consistent scaling
-            let allValues = series.flatMap { $0.data }
-            
-            if allValues.count < 2 {
-                Rectangle()
-                    .fill(Color.clear)
-            } else {
-                let maxValue = allValues.max() ?? 1
-                let minValue = allValues.min() ?? 0
-                let range = maxValue - minValue
-                let effectiveRange = range > 0 ? range : 1
-                
-                ZStack {
-                    ForEach(Array(series.enumerated()), id: \.offset) { index, seriesData in
-                        if seriesData.data.count >= 2 {
-                            Path { path in
-                                let width = geometry.size.width
-                                let height = geometry.size.height
-                                let stepX = width / CGFloat(seriesData.data.count - 1)
-                                
-                                for (dataIndex, value) in seriesData.data.enumerated() {
-                                    let x = CGFloat(dataIndex) * stepX
-                                    let normalizedValue = (value - minValue) / effectiveRange
-                                    let y = height * (1 - normalizedValue) // Invert Y
-                                    
-                                    if dataIndex == 0 {
-                                        path.move(to: CGPoint(x: x, y: y))
-                                    } else {
-                                        path.addLine(to: CGPoint(x: x, y: y))
-                                    }
-                                }
-                            }
-                            .stroke(seriesData.color, lineWidth: lineWidth)
-                        }
+        if allValues.count < 2 {
+            Rectangle().fill(Color.clear)
+        } else {
+            Chart {
+                ForEach(Array(series.enumerated()), id: \.offset) { seriesIndex, seriesData in
+                    ForEach(Array(seriesData.data.enumerated()), id: \.offset) { i, value in
+                        LineMark(
+                            x: .value("i", i),
+                            y: .value("v", value),
+                            series: .value("s", seriesIndex)
+                        )
+                        .foregroundStyle(seriesData.color)
+                        .lineStyle(StrokeStyle(lineWidth: lineWidth))
                     }
                 }
             }
+            .chartLegend(.hidden)
+            .chartXAxis(.hidden)
+            .chartYAxis(.hidden)
+            .chartXScale(domain: 0...max(1, maxSamples - 1))
+            .chartYScale(domain: yDomain)
+            .chartPlotStyle { $0.background(Color.clear) }
         }
     }
 }

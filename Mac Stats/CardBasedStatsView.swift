@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct CardBasedStatsView: View {
-    @EnvironmentObject var systemMonitor: SystemMonitor
+    @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     @EnvironmentObject var externalIPManager: ExternalIPManager
     @EnvironmentObject var wifiManager: WiFiManager
