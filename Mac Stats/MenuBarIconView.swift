@@ -42,25 +42,43 @@ struct MenuBarIconView: View {
                preferences.showMenuBarFanSpeed
     }
     
-    private func enabledStatsView() -> some View {
-        var items: [AnyView] = []
-        for stat in preferences.menuBarStatOrder {
-            switch stat {
-            case .cpu:      if preferences.showMenuBarCPU     { items.append(AnyView(cpuStatView())) }
-            case .memory:   if preferences.showMenuBarMemory  { items.append(AnyView(memoryStatView())) }
-            case .disk:     if preferences.showMenuBarDisk    { items.append(AnyView(diskStatView())) }
-            case .network:  if preferences.showMenuBarNetwork { items.append(AnyView(networkStatCompactView())) }
-            case .uptime:   if preferences.showMenuBarUptime   { items.append(AnyView(uptimeStatView())) }
-            case .power:    if preferences.showMenuBarPower    { items.append(AnyView(powerStatView())) }
-            case .cpuTemp:  if preferences.showMenuBarCPUTemp  { items.append(AnyView(cpuTempStatView())) }
-            case .fanSpeed: if preferences.showMenuBarFanSpeed { items.append(AnyView(fanStatView())) }
-            }
-        }
+    private var visibleStats: [MenuBarStatID] {
+        preferences.menuBarStatOrder.filter { isStatEnabled($0) }
+    }
 
+    private func isStatEnabled(_ stat: MenuBarStatID) -> Bool {
+        switch stat {
+        case .cpu:      return preferences.showMenuBarCPU
+        case .memory:   return preferences.showMenuBarMemory
+        case .disk:     return preferences.showMenuBarDisk
+        case .network:  return preferences.showMenuBarNetwork
+        case .uptime:   return preferences.showMenuBarUptime
+        case .power:    return preferences.showMenuBarPower
+        case .cpuTemp:  return preferences.showMenuBarCPUTemp
+        case .fanSpeed: return preferences.showMenuBarFanSpeed
+        }
+    }
+
+    @ViewBuilder
+    private func statView(for stat: MenuBarStatID) -> some View {
+        switch stat {
+        case .cpu:      cpuStatView()
+        case .memory:   memoryStatView()
+        case .disk:     diskStatView()
+        case .network:  networkStatCompactView()
+        case .uptime:   uptimeStatView()
+        case .power:    powerStatView()
+        case .cpuTemp:  cpuTempStatView()
+        case .fanSpeed: fanStatView()
+        }
+    }
+
+    private func enabledStatsView() -> some View {
+        let stats = visibleStats
         return HStack(alignment: .center, spacing: 0) {
-            ForEach(items.indices, id: \.self) { i in
-                if i > 0 { statDivider() }
-                items[i].padding(.horizontal, 2)
+            ForEach(Array(stats.enumerated()), id: \.element) { index, stat in
+                if index > 0 { statDivider() }
+                statView(for: stat).padding(.horizontal, 2)
             }
         }
         .monospacedDigit()

@@ -29,6 +29,8 @@ struct Mac_StatsApp: App {
                 .environmentObject(preferences)
                 .environmentObject(ExternalIPManager.shared)
                 .environmentObject(wifiManager)
+                .onAppear { systemMonitor.viewerDidAppear() }
+                .onDisappear { systemMonitor.viewerDidDisappear() }
         } label: {
             // The view for the menu bar icon itself
             MenuBarLabelView(imageManager: imageManager, systemMonitor: systemMonitor, preferences: preferences)
@@ -53,6 +55,10 @@ struct Mac_StatsApp: App {
             .onAppear {
                 // Ensure SystemMonitor is properly initialized when main window appears
                 initializeSystemMonitor()
+                systemMonitor.viewerDidAppear()
+            }
+            .onDisappear {
+                systemMonitor.viewerDidDisappear()
             }
         }
         .windowResizability(.contentSize)
@@ -66,6 +72,8 @@ struct Mac_StatsApp: App {
                 .environmentObject(ExternalIPManager.shared)
                 .environmentObject(wifiManager)
                 .frame(width: 450, height: 600)
+                .onAppear { systemMonitor.viewerDidAppear() }
+                .onDisappear { systemMonitor.viewerDidDisappear() }
                 .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
                     // Ensure settings window stays prominent
                     if let window = notification.object as? NSWindow, window.title == "Settings" {

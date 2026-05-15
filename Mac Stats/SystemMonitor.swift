@@ -287,6 +287,10 @@ class SystemMonitor: ObservableObject {
         // Add caching to prevent excessive macmon calls
         static let powerConsumptionCacheInterval: TimeInterval = 15.0 // Cache power data for 15 seconds minimum
         static let macmonCallTimeout: TimeInterval = 3.0 // Reduce timeout for faster failure
+
+        // Adaptive polling: when no popover/window is open, slow down to reduce idle CPU.
+        static let idleStatsInterval: TimeInterval = 15.0
+        static let idlePowerInterval: TimeInterval = 180.0
     }
     
     // MARK: - Published Properties
@@ -359,6 +363,7 @@ class SystemMonitor: ObservableObject {
     }()
     private var cachedSPPowerOutput: (wattage: Int, type: String, model: String, isConnected: Bool)?
     private var lastSPPowerUpdate: Date = Date.distantPast
+    private var activeViewerCount: Int = 0
 
     // Cache for battery details (system_profiler is slow — cache for 10 minutes)
     var cachedBatteryDetails: (cycleCount: Int, maxCapacity: Int)?
@@ -396,20 +401,45 @@ class SystemMonitor: ObservableObject {
             updateInterval = preferences.updateInterval
             powerUpdateInterval = preferences.powerUpdateInterval
         }
-        
-        // Update stats immediately and then schedule the timer
+
         updateStats()
-        timer = Timer.scheduledTimer(withTimeInterval: updateInterval, repeats: true) { [weak self] _ in
+        updatePowerConsumption()
+        installTimers()
+    }
+
+    private func installTimers() {
+        timer?.invalidate()
+        powerTimer?.invalidate()
+
+        let active = activeViewerCount > 0
+        let statsInterval = active ? updateInterval : max(updateInterval, Constants.idleStatsInterval)
+        let powerInterval = active ? powerUpdateInterval : max(powerUpdateInterval, Constants.idlePowerInterval)
+
+        timer = Timer.scheduledTimer(withTimeInterval: statsInterval, repeats: true) { [weak self] _ in
             self?.updateStats()
         }
-        
-        // Update power consumption immediately and then schedule the power timer
-        updatePowerConsumption()
-        powerTimer = Timer.scheduledTimer(withTimeInterval: powerUpdateInterval, repeats: true) { [weak self] _ in
+        powerTimer = Timer.scheduledTimer(withTimeInterval: powerInterval, repeats: true) { [weak self] _ in
             self?.updatePowerConsumption()
         }
-        
-        // Network processes are updated by the counter inside updateStats()
+    }
+
+    /// Called by views in onAppear to indicate the user is actively watching stats.
+    /// Switches polling to the user-configured (fast) interval.
+    func viewerDidAppear() {
+        activeViewerCount += 1
+        if activeViewerCount == 1 {
+            // Transition from idle to active — refresh immediately and switch to fast intervals
+            updateStats()
+            installTimers()
+        }
+    }
+
+    /// Called by views in onDisappear. When no views remain, polling slows to idle intervals.
+    func viewerDidDisappear() {
+        activeViewerCount = max(0, activeViewerCount - 1)
+        if activeViewerCount == 0 {
+            installTimers()
+        }
     }
     
     func stopMonitoring() {
@@ -427,22 +457,14 @@ class SystemMonitor: ObservableObject {
     }
     
     func updateMonitoringInterval(_ interval: TimeInterval) {
-        stopMonitoring()
         updateInterval = interval
-        startMonitoring()
+        installTimers()
     }
-    
+
     // New method to update power consumption interval
     func updatePowerMonitoringInterval(_ interval: TimeInterval) {
-        powerTimer?.invalidate()
-        powerTimer = nil
         powerUpdateInterval = interval
-        
-        // Restart power monitoring with new interval
-        updatePowerConsumption()
-        powerTimer = Timer.scheduledTimer(withTimeInterval: powerUpdateInterval, repeats: true) { [weak self] _ in
-            self?.updatePowerConsumption()
-        }
+        installTimers()
     }
     
     // Start a timer to refresh external IP every 30 minutes
