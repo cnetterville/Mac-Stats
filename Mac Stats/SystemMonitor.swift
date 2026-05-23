@@ -455,27 +455,72 @@ class SystemMonitor {
     }
 
     private func fetchTimeMachineInfo() -> TimeMachineInfo {
-        // `tmutil latestbackup` returns the path of the most recent backup.
-        // Empty / non-zero exit indicates Time Machine is not configured or has no backups yet.
-        guard let raw = executeCommand("/usr/bin/tmutil", ["latestbackup"]) else {
-            return TimeMachineInfo()
+        // `destinationinfo` succeeds (and lists "Name = ...") whenever Time Machine
+        // has a destination set, even if no backups exist yet. We use this rather
+        // than `latestbackup` for the "configured" check because `latestbackup` may
+        // require Full Disk Access or return non-zero with no backups available.
+        let dest = runTMUtil(["destinationinfo"])
+        let isConfigured = dest.stdout.range(of: #"(Name|ID)\s*[:=]"#,
+                                             options: .regularExpression) != nil
+
+        // Parse the latest backup date out of any path/snapshot identifier tmutil
+        // hands back — `/Volumes/.../2024-01-15-143012`, `.backup`, or
+        // `com.apple.TimeMachine.2024-01-15-143012.local` (APFS snapshot).
+        let latest = runTMUtil(["latestbackup"])
+        var lastBackupDate: Date? = nil
+        let raw = latest.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty {
+            let lastComponent = (raw as NSString).lastPathComponent
+            if let match = lastComponent.range(of: #"\d{4}-\d{2}-\d{2}-\d{6}"#,
+                                               options: .regularExpression) {
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+                formatter.timeZone = TimeZone.current
+                lastBackupDate = formatter.date(from: String(lastComponent[match]))
+            }
         }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return TimeMachineInfo() }
 
-        // Path ends with a component like "2024-01-15-143012" or "2024-01-15-143012.backup".
-        let lastComponent = (trimmed as NSString).lastPathComponent
-            .replacingOccurrences(of: ".backup", with: "")
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
-        formatter.timeZone = TimeZone.current
-        let lastBackupDate = formatter.date(from: lastComponent)
+        let status = runTMUtil(["status"])
+        let isBackingUp = status.stdout.contains("Running = 1")
 
-        // Is a backup running right now? `tmutil status` includes "Running = 1" while active.
-        let statusOutput = executeCommand("/usr/bin/tmutil", ["status"]) ?? ""
-        let isBackingUp = statusOutput.contains("Running = 1")
+        #if DEBUG
+        print("TM destinationinfo (exit \(dest.exitCode)): \(dest.stdout.prefix(80))")
+        print("TM latestbackup (exit \(latest.exitCode)): \(latest.stdout.prefix(120))")
+        if !latest.stderr.isEmpty { print("TM latestbackup stderr: \(latest.stderr)") }
+        #endif
 
-        return TimeMachineInfo(isConfigured: true, isBackingUp: isBackingUp, lastBackupDate: lastBackupDate)
+        // Even if `latestbackup` failed (e.g. needs Full Disk Access), still
+        // report "configured" so the UI doesn't lie about TM being off.
+        return TimeMachineInfo(
+            isConfigured: isConfigured || lastBackupDate != nil,
+            isBackingUp: isBackingUp,
+            lastBackupDate: lastBackupDate
+        )
+    }
+
+    private struct TMUtilResult {
+        let exitCode: Int32
+        let stdout: String
+        let stderr: String
+    }
+
+    private func runTMUtil(_ args: [String]) -> TMUtilResult {
+        let task = Process()
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/tmutil")
+        task.arguments = args
+        task.standardOutput = outPipe
+        task.standardError = errPipe
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return TMUtilResult(exitCode: -1, stdout: "", stderr: "\(error)")
+        }
+        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return TMUtilResult(exitCode: task.terminationStatus, stdout: stdout, stderr: stderr)
     }
 
     /// Subscribes to IOKit power source change events so plug/unplug and
