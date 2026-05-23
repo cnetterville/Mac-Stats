@@ -1892,7 +1892,11 @@ class SystemMonitor {
             _ = description[kIOPSPowerSourceStateKey] as? String ?? "Unknown"
             let isCharging = (description[kIOPSIsChargingKey] as? Bool) ?? false
             let chargeLevel = (description[kIOPSCurrentCapacityKey] as? Int).map(Double.init) ?? 0.0
-            let timeRemaining = (description[kIOPSTimeToEmptyKey] as? Int).map(Double.init) ?? 0.0
+            // When charging, IOKit puts the ETA in TimeToFullCharge; TimeToEmpty is 0.
+            // When discharging, TimeToEmpty is the runtime estimate. Either key can return
+            // -1 meaning "still calculating" — preserved here so the UI can show that state.
+            let timeKey = isCharging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey
+            let timeRemaining = (description[timeKey] as? Int).map(Double.init) ?? 0.0
             let maxCapacity = (description[kIOPSMaxCapacityKey] as? Int) ?? 100
             let voltage = (description[kIOPSVoltageKey] as? Int).map(Double.init) ?? 0.0
             

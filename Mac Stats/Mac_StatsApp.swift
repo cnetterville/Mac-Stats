@@ -2291,13 +2291,15 @@ struct PowerSectionView: View {
                         .padding(.horizontal, 20)
                         .padding(.bottom, (battery.timeRemaining > 0 || hasExtraStats) ? 8 : 16)
 
-                    if battery.timeRemaining > 0 {
+                    if battery.timeRemaining != 0 {
                         HStack {
                             Text(battery.isCharging ? "Time to Full" : "Time Remaining")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                             Spacer()
-                            Text(formatMinutes(battery.timeRemaining))
+                            Text(battery.timeRemaining < 0
+                                 ? "Calculating…"
+                                 : formatMinutes(battery.timeRemaining))
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
