@@ -105,6 +105,18 @@ struct UPSInfo {
     }
 }
 
+struct TimeMachineInfo: Equatable {
+    let isConfigured: Bool
+    let isBackingUp: Bool
+    let lastBackupDate: Date?
+
+    init(isConfigured: Bool = false, isBackingUp: Bool = false, lastBackupDate: Date? = nil) {
+        self.isConfigured = isConfigured
+        self.isBackingUp = isBackingUp
+        self.lastBackupDate = lastBackupDate
+    }
+}
+
 enum MemoryPressureLevel: String, Equatable {
     case normal, warning, critical
 }
@@ -323,6 +335,7 @@ class SystemMonitor {
     var swapUsage: (used: Double, total: Double) = (0.0, 0.0)
     var processCount: Int = 0
     var threadCount: Int = 0
+    var timeMachineInfo: TimeMachineInfo = TimeMachineInfo()
     var diskUsage: (free: Double, total: Double, purgeable: Double) = (0.0, 0.0, 0.0)
     var networkUsage: (upload: Double, download: Double) = (0.0, 0.0)
     var networkInterfaces: [String] = []
@@ -399,6 +412,7 @@ class SystemMonitor {
     /// When zero, the expensive `nettop` subprocess is skipped each tick.
     private var activeNetworkProcessesViewerCount: Int = 0
     private var powerSourceNotifySource: CFRunLoopSource?
+    private var timeMachineRefreshTask: Task<Void, Never>?
 
     // Cache for battery details (system_profiler is slow — cache for 10 minutes)
     var cachedBatteryDetails: (cycleCount: Int, maxCapacity: Int)?
@@ -421,6 +435,47 @@ class SystemMonitor {
         startMonitoring()
         startExternalIPRefresh()
         setupPowerSourceNotifications()
+        startTimeMachineRefresh()
+    }
+
+    /// Time Machine status changes infrequently; refresh every 5 minutes on a
+    /// background task to keep the tmutil subprocess off the hot path.
+    private func startTimeMachineRefresh() {
+        timeMachineRefreshTask?.cancel()
+        timeMachineRefreshTask = Task.detached(priority: .background) { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let info = self.fetchTimeMachineInfo()
+                await MainActor.run {
+                    if self.timeMachineInfo != info { self.timeMachineInfo = info }
+                }
+                try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 min
+            }
+        }
+    }
+
+    private func fetchTimeMachineInfo() -> TimeMachineInfo {
+        // `tmutil latestbackup` returns the path of the most recent backup.
+        // Empty / non-zero exit indicates Time Machine is not configured or has no backups yet.
+        guard let raw = executeCommand("/usr/bin/tmutil", ["latestbackup"]) else {
+            return TimeMachineInfo()
+        }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return TimeMachineInfo() }
+
+        // Path ends with a component like "2024-01-15-143012" or "2024-01-15-143012.backup".
+        let lastComponent = (trimmed as NSString).lastPathComponent
+            .replacingOccurrences(of: ".backup", with: "")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        formatter.timeZone = TimeZone.current
+        let lastBackupDate = formatter.date(from: lastComponent)
+
+        // Is a backup running right now? `tmutil status` includes "Running = 1" while active.
+        let statusOutput = executeCommand("/usr/bin/tmutil", ["status"]) ?? ""
+        let isBackingUp = statusOutput.contains("Running = 1")
+
+        return TimeMachineInfo(isConfigured: true, isBackingUp: isBackingUp, lastBackupDate: lastBackupDate)
     }
 
     /// Subscribes to IOKit power source change events so plug/unplug and
@@ -2689,6 +2744,7 @@ class SystemMonitor {
     deinit {
         stopMonitoring()
         stopExternalIPRefresh()
+        timeMachineRefreshTask?.cancel()
         if let source = powerSourceNotifySource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }

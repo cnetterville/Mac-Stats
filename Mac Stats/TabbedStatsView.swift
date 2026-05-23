@@ -1177,11 +1177,36 @@ struct TabbedStatsView: View {
 					
                     let totalPhysicalMemory = Double(ProcessInfo.processInfo.physicalMemory) / (1000 * 1000 * 1000)
                     GlassInfoRowView(label: "Physical Memory", value: String(format: "%.0f GB", totalPhysicalMemory))
+                    GlassInfoRowView(label: "Time Machine",
+                                     value: timeMachineStatusText,
+                                     valueColor: timeMachineStatusColor)
                 }
             }
         }
     }
-    
+
+    private var timeMachineStatusText: String {
+        let info = systemMonitor.timeMachineInfo
+        guard info.isConfigured else { return "Not configured" }
+        if info.isBackingUp { return "Backing up…" }
+        guard let last = info.lastBackupDate else { return "No backups yet" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        return "Last backup \(formatter.localizedString(for: last, relativeTo: Date()))"
+    }
+
+    private var timeMachineStatusColor: Color {
+        let info = systemMonitor.timeMachineInfo
+        guard info.isConfigured else { return .secondary }
+        if info.isBackingUp { return .blue }
+        if let last = info.lastBackupDate {
+            let hoursAgo = Date().timeIntervalSince(last) / 3600
+            if hoursAgo > 48 { return .orange }    // older than 2 days
+            if hoursAgo > 168 { return .red }      // older than a week
+        }
+        return .green
+    }
+
     private var temperatureCard: some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
