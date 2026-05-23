@@ -375,6 +375,7 @@ class SystemMonitor {
     private var cachedSPPowerOutput: (wattage: Int, type: String, model: String, isConnected: Bool)?
     private var lastSPPowerUpdate: Date = Date.distantPast
     private var activeViewerCount: Int = 0
+    private var powerSourceNotifySource: CFRunLoopSource?
 
     // Cache for battery details (system_profiler is slow — cache for 10 minutes)
     var cachedBatteryDetails: (cycleCount: Int, maxCapacity: Int)?
@@ -396,6 +397,40 @@ class SystemMonitor {
         // Data will be refreshed when the view appears.
         startMonitoring()
         startExternalIPRefresh()
+        setupPowerSourceNotifications()
+    }
+
+    /// Subscribes to IOKit power source change events so plug/unplug and
+    /// charging-state transitions update immediately, independent of the polling rate.
+    private func setupPowerSourceNotifications() {
+        let context = Unmanaged.passUnretained(self).toOpaque()
+        let callback: @convention(c) (UnsafeMutableRawPointer?) -> Void = { ctx in
+            guard let ctx else { return }
+            let monitor = Unmanaged<SystemMonitor>.fromOpaque(ctx).takeUnretainedValue()
+            monitor.refreshPowerSources()
+        }
+        guard let source = IOPSNotificationCreateRunLoopSource(callback, context)?.takeRetainedValue() else {
+            return
+        }
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        powerSourceNotifySource = source
+    }
+
+    /// Lightweight refresh triggered by IOKit notifications — re-reads battery
+    /// and UPS state only, leaving the rest of the stats to the polling timer.
+    private func refreshPowerSources() {
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self else { return }
+            let powerBlob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue()
+            let battery = self.getCurrentBatteryInfo(blob: powerBlob)
+            let ups = self.getCurrentUPSInfo(blob: powerBlob)
+            await MainActor.run {
+                self.batteryInfo = battery
+                self.upsInfo = ups
+                self.checkAndNotifyUPSPowerChange()
+                self.didUpdate.send()
+            }
+        }
     }
 
     private static func readPECoreSplit() -> (pCores: Int, eCores: Int) {
@@ -2555,6 +2590,9 @@ class SystemMonitor {
     deinit {
         stopMonitoring()
         stopExternalIPRefresh()
+        if let source = powerSourceNotifySource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
+        }
     }
 }
 
