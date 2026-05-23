@@ -69,6 +69,7 @@ struct SettingsView: View {
                     if preferences.showMenuBarFanSpeed {
                         Toggle("  Show Fan Chart", isOn: $preferences.showMenuBarFanChart)
                     }
+                    Toggle("Show Battery / Power in Menu Bar", isOn: $preferences.showMenuBarBattery)
                 }
                 
                 Section("Menu Bar Order") {

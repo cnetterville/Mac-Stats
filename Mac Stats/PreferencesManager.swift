@@ -54,7 +54,7 @@ enum TemperatureUnit: Int, CaseIterable {
 }
 
 enum MenuBarStatID: String, CaseIterable, Identifiable, Codable {
-    case cpu, memory, disk, network, uptime, power, cpuTemp, fanSpeed
+    case cpu, memory, disk, network, uptime, power, cpuTemp, fanSpeed, battery
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -66,6 +66,7 @@ enum MenuBarStatID: String, CaseIterable, Identifiable, Codable {
         case .power: return "Power"
         case .cpuTemp: return "CPU Temp"
         case .fanSpeed: return "Fan Speed"
+        case .battery: return "Battery / Power"
         }
     }
     var icon: String {
@@ -78,6 +79,7 @@ enum MenuBarStatID: String, CaseIterable, Identifiable, Codable {
         case .power: return "bolt.fill"
         case .cpuTemp: return "thermometer"
         case .fanSpeed: return "fan"
+        case .battery: return "battery.75"
         }
     }
 }
@@ -93,6 +95,7 @@ class PreferencesManager: ObservableObject {
         case showMenuBarPower = "showMenuBarPower"
         case showMenuBarCPUTemp = "showMenuBarCPUTemp"
         case showMenuBarFanSpeed = "showMenuBarFanSpeed"
+        case showMenuBarBattery = "showMenuBarBattery"
         case showMenuBarCPUChart = "showMenuBarCPUChart"
         case showMenuBarMemChart = "showMenuBarMemChart"
         case showMenuBarPowerChart = "showMenuBarPowerChart"
@@ -131,6 +134,7 @@ class PreferencesManager: ObservableObject {
     @Published var showMenuBarPower: Bool = false
     @Published var showMenuBarCPUTemp: Bool = false
     @Published var showMenuBarFanSpeed: Bool = false
+    @Published var showMenuBarBattery: Bool = false
     @Published var showMenuBarCPUChart: Bool = false
     @Published var showMenuBarMemChart: Bool = false
     @Published var showMenuBarPowerChart: Bool = false
@@ -220,6 +224,7 @@ class PreferencesManager: ObservableObject {
         UserDefaults.standard.set(showMenuBarPower, forKey: Keys.showMenuBarPower.rawValue)
         UserDefaults.standard.set(showMenuBarCPUTemp, forKey: Keys.showMenuBarCPUTemp.rawValue)
         UserDefaults.standard.set(showMenuBarFanSpeed, forKey: Keys.showMenuBarFanSpeed.rawValue)
+        UserDefaults.standard.set(showMenuBarBattery, forKey: Keys.showMenuBarBattery.rawValue)
         UserDefaults.standard.set(showMenuBarCPUChart, forKey: Keys.showMenuBarCPUChart.rawValue)
         UserDefaults.standard.set(showMenuBarMemChart, forKey: Keys.showMenuBarMemChart.rawValue)
         UserDefaults.standard.set(showMenuBarPowerChart, forKey: Keys.showMenuBarPowerChart.rawValue)
@@ -274,6 +279,7 @@ class PreferencesManager: ObservableObject {
         showMenuBarPower = UserDefaults.standard.object(forKey: Keys.showMenuBarPower.rawValue) as? Bool ?? false
         showMenuBarCPUTemp = UserDefaults.standard.object(forKey: Keys.showMenuBarCPUTemp.rawValue) as? Bool ?? false
         showMenuBarFanSpeed = UserDefaults.standard.object(forKey: Keys.showMenuBarFanSpeed.rawValue) as? Bool ?? false
+        showMenuBarBattery = UserDefaults.standard.object(forKey: Keys.showMenuBarBattery.rawValue) as? Bool ?? false
         showMenuBarCPUChart = UserDefaults.standard.object(forKey: Keys.showMenuBarCPUChart.rawValue) as? Bool ?? false
         showMenuBarMemChart = UserDefaults.standard.object(forKey: Keys.showMenuBarMemChart.rawValue) as? Bool ?? false
         showMenuBarPowerChart = UserDefaults.standard.object(forKey: Keys.showMenuBarPowerChart.rawValue) as? Bool ?? false
@@ -325,6 +331,7 @@ class PreferencesManager: ObservableObject {
             $showMenuBarPower.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarCPUTemp.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarFanSpeed.map { _ in () }.eraseToAnyPublisher(),
+            $showMenuBarBattery.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarCPUChart.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarMemChart.map { _ in () }.eraseToAnyPublisher(),
             $showMenuBarPowerChart.map { _ in () }.eraseToAnyPublisher(),

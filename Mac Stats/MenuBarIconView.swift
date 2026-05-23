@@ -39,7 +39,8 @@ struct MenuBarIconView: View {
                preferences.showMenuBarUptime ||
                preferences.showMenuBarPower ||
                preferences.showMenuBarCPUTemp ||
-               preferences.showMenuBarFanSpeed
+               preferences.showMenuBarFanSpeed ||
+               preferences.showMenuBarBattery
     }
     
     private var visibleStats: [MenuBarStatID] {
@@ -56,6 +57,7 @@ struct MenuBarIconView: View {
         case .power:    return preferences.showMenuBarPower
         case .cpuTemp:  return preferences.showMenuBarCPUTemp
         case .fanSpeed: return preferences.showMenuBarFanSpeed
+        case .battery:  return preferences.showMenuBarBattery
         }
     }
 
@@ -70,6 +72,7 @@ struct MenuBarIconView: View {
         case .power:    powerStatView()
         case .cpuTemp:  cpuTempStatView()
         case .fanSpeed: fanStatView()
+        case .battery:  batteryStatView()
         }
     }
 
@@ -313,6 +316,41 @@ struct MenuBarIconView: View {
 
     private func formatRPM(_ rpm: Double) -> String {
         rpm >= 1000 ? String(format: "%.1fk", rpm / 1000) : String(format: "%.0f", rpm)
+    }
+
+    /// Smart slot: shows battery level when running on battery,
+    /// switches to current power draw when plugged in / charging.
+    /// On desktops (no battery), always shows wattage.
+    @ViewBuilder
+    private func batteryStatView() -> some View {
+        let battery = systemMonitor.batteryInfo
+        let showsBattery = battery.present && !battery.isPluggedIn
+        VStack(alignment: .center, spacing: compactSpacing) {
+            Text(showsBattery ? "BAT" : "PWR")
+                .font(compactFont)
+            if showsBattery {
+                Text(String(format: "%.0f%%", battery.chargeLevel))
+                    .font(dataFont)
+                    .foregroundColor(batteryLevelColor(battery.chargeLevel))
+            } else {
+                let watts = systemMonitor.dcInPower > 0
+                    ? systemMonitor.dcInPower
+                    : systemMonitor.powerConsumptionInfo.totalSystemPower
+                Text(String(format: "%.0fW", watts))
+                    .font(dataFont)
+                    .foregroundColor(powerColor(for: watts))
+            }
+        }
+        .frame(width: 42)
+        .monospacedDigit()
+    }
+
+    private func batteryLevelColor(_ pct: Double) -> Color {
+        switch pct {
+        case ..<20:   return .red
+        case 20..<40: return .orange
+        default:      return .white
+        }
     }
 
     private func powerColor(for watts: Double) -> Color {

@@ -126,7 +126,8 @@ class MenuBarImageManager: ObservableObject {
         let shouldShowAnyStats = preferences.showMenuBarCPU ||
                                 preferences.showMenuBarMemory ||
                                 preferences.showMenuBarDisk ||
-                                preferences.showMenuBarNetwork
+                                preferences.showMenuBarNetwork ||
+                                preferences.showMenuBarBattery
         
         // If we should show stats but haven't received real data yet, wait a bit more
         if shouldShowAnyStats && !hasReceivedRealData {
