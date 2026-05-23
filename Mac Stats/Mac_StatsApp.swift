@@ -2258,43 +2258,76 @@ struct PowerSectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
 
-            // Battery card
+            // Battery card (shown when a battery is present, i.e. on laptops)
             if systemMonitor.batteryInfo.present {
+                let battery = systemMonitor.batteryInfo
+                let hasExtraStats = battery.cycleCount > 0
+                    || (battery.maxCapacity > 0 && battery.maxCapacity <= 100)
+                    || battery.temperature > 0
+                    || (battery.amperage != 0 && battery.voltage > 0)
                 VStack(spacing: 0) {
                     HStack {
-                        Image(systemName: batteryIcon(systemMonitor.batteryInfo.chargeLevel,
-                                                       charging: systemMonitor.batteryInfo.isCharging))
+                        Image(systemName: batteryIcon(battery.chargeLevel,
+                                                       charging: battery.isCharging))
                             .font(.system(size: 14))
-                            .foregroundColor(batteryColor(systemMonitor.batteryInfo.chargeLevel))
+                            .foregroundColor(batteryColor(battery.chargeLevel))
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Battery")
                                 .font(.system(size: 11, weight: .semibold))
-                            Text(systemMonitor.batteryInfo.isCharging ? "Charging" : "On Battery")
+                            Text(battery.isCharging ? "Charging" : "On Battery")
                                 .font(.system(size: 9))
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
-                        Text(String(format: "%.0f%%", systemMonitor.batteryInfo.chargeLevel))
+                        Text(String(format: "%.0f%%", battery.chargeLevel))
                             .font(.system(size: 22, weight: .bold, design: .rounded))
-                            .foregroundColor(batteryColor(systemMonitor.batteryInfo.chargeLevel))
+                            .foregroundColor(batteryColor(battery.chargeLevel))
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 12)
 
-                    ProgressView(value: systemMonitor.batteryInfo.chargeLevel, total: 100)
-                        .tint(batteryColor(systemMonitor.batteryInfo.chargeLevel))
+                    ProgressView(value: battery.chargeLevel, total: 100)
+                        .tint(batteryColor(battery.chargeLevel))
                         .padding(.horizontal, 20)
-                        .padding(.bottom, systemMonitor.batteryInfo.timeRemaining > 0 ? 8 : 16)
+                        .padding(.bottom, (battery.timeRemaining > 0 || hasExtraStats) ? 8 : 16)
 
-                    if systemMonitor.batteryInfo.timeRemaining > 0 {
+                    if battery.timeRemaining > 0 {
                         HStack {
-                            Text(systemMonitor.batteryInfo.isCharging ? "Time to Full" : "Time Remaining")
+                            Text(battery.isCharging ? "Time to Full" : "Time Remaining")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                             Spacer()
-                            Text(formatMinutes(systemMonitor.batteryInfo.timeRemaining))
+                            Text(formatMinutes(battery.timeRemaining))
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, hasExtraStats ? 8 : 14)
+                    }
+
+                    if hasExtraStats {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            if battery.cycleCount > 0 {
+                                batteryStat(label: "Cycles", value: "\(battery.cycleCount)",
+                                            icon: "arrow.triangle.2.circlepath", color: .blue)
+                            }
+                            if battery.maxCapacity > 0 && battery.maxCapacity <= 100 {
+                                batteryStat(label: "Health", value: "\(battery.maxCapacity)%",
+                                            icon: "heart.fill", color: healthColor(battery.maxCapacity))
+                            }
+                            if battery.temperature > 0 {
+                                batteryStat(label: "Temp", value: formatTemp(battery.temperature),
+                                            icon: "thermometer.medium",
+                                            color: tempColor(battery.temperature))
+                            }
+                            if battery.amperage != 0 && battery.voltage > 0 {
+                                let watts = abs(battery.amperage / 1000.0 * battery.voltage / 1000.0)
+                                let charging = battery.amperage > 0
+                                batteryStat(label: charging ? "Charge Rate" : "Discharge",
+                                            value: String(format: "%.1f W", watts),
+                                            icon: charging ? "bolt.fill" : "minus.plus.batteryblock",
+                                            color: charging ? .green : .orange)
+                            }
                         }
                         .padding(.horizontal, 20)
                         .padding(.bottom, 14)
@@ -2400,6 +2433,37 @@ struct PowerSectionView: View {
         case 20..<40: return .orange
         default: return .green
         }
+    }
+
+    private func healthColor(_ pct: Int) -> Color {
+        switch pct {
+        case 80...: return .green
+        case 60..<80: return .yellow
+        default: return .orange
+        }
+    }
+
+    @ViewBuilder
+    private func batteryStat(label: String, value: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(color.gradient)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.primary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+        )
     }
 
     private func formatMinutes(_ minutes: Double) -> String {
