@@ -1229,8 +1229,10 @@ struct NetworkSectionView: View {
             .padding(.top, 12)
             .padding(.bottom, 16)
         }
+        .onAppear { systemMonitor.networkProcessesViewerDidAppear() }
+        .onDisappear { systemMonitor.networkProcessesViewerDidDisappear() }
     }
-    
+
     private func formatSpeed(_ mbps: Double) -> String {
         if mbps >= 1000 {
             return String(format: "%.1f", mbps / 1000)

@@ -375,6 +375,9 @@ class SystemMonitor {
     private var cachedSPPowerOutput: (wattage: Int, type: String, model: String, isConnected: Bool)?
     private var lastSPPowerUpdate: Date = Date.distantPast
     private var activeViewerCount: Int = 0
+    /// Reference count of views currently displaying per-process network data.
+    /// When zero, the expensive `nettop` subprocess is skipped each tick.
+    private var activeNetworkProcessesViewerCount: Int = 0
     private var powerSourceNotifySource: CFRunLoopSource?
 
     // Cache for battery details (system_profiler is slow — cache for 10 minutes)
@@ -486,6 +489,30 @@ class SystemMonitor {
         if activeViewerCount == 0 {
             installTimers()
         }
+    }
+
+    /// Network-process views (the dropdown's Network tab, card-based view's
+    /// process-monitoring mode) call this in onAppear so nettop is only run
+    /// while someone is actually looking at the per-process list.
+    func networkProcessesViewerDidAppear() {
+        activeNetworkProcessesViewerCount += 1
+        if activeNetworkProcessesViewerCount == 1 {
+            // First viewer — refresh immediately so they don't wait for the next tick
+            Task.detached(priority: .userInitiated) { [weak self] in
+                guard let self else { return }
+                let procs = self.getTopNetworkProcesses(count: Constants.processCountThreshold)
+                await MainActor.run {
+                    self.cachedNetworkProcesses = procs
+                    self.topNetworkProcesses = procs
+                    self.networkProcessUpdateCounter = 0
+                    self.didUpdate.send()
+                }
+            }
+        }
+    }
+
+    func networkProcessesViewerDidDisappear() {
+        activeNetworkProcessesViewerCount = max(0, activeNetworkProcessesViewerCount - 1)
     }
     
     func stopMonitoring() {
@@ -894,9 +921,12 @@ class SystemMonitor {
             let systemInfo = await sysInfo
 
             // Network/disk process lists use their own counter/cache (kept sequential).
+            // The nettop subprocess is heavyweight, so we only run it when at least
+            // one view is actually displaying the per-process list.
             self.networkProcessUpdateCounter += 1
             let networkProcesses: [ProcessNetworkInfo]
-            if self.networkProcessUpdateCounter >= Int(Constants.networkProcessUpdateInterval / self.updateInterval) {
+            if self.activeNetworkProcessesViewerCount > 0
+                && self.networkProcessUpdateCounter >= Int(Constants.networkProcessUpdateInterval / self.updateInterval) {
                 networkProcesses = self.getTopNetworkProcesses(count: Constants.processCountThreshold)
                 self.cachedNetworkProcesses = networkProcesses
                 self.networkProcessUpdateCounter = 0

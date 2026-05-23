@@ -1022,8 +1022,10 @@ struct CardBasedStatsView: View {
                 }
             }
         }
+        .onAppear { systemMonitor.networkProcessesViewerDidAppear() }
+        .onDisappear { systemMonitor.networkProcessesViewerDidDisappear() }
     }
-    
+
     private func networkProcessRowView(processInfo: ProcessNetworkInfo) -> some View {
         HStack {
             HStack(spacing: 6) {
