@@ -109,6 +109,7 @@ struct UPSInfo {
 struct BatteryInfo {
     let name: String
     let isCharging: Bool
+    let isPluggedIn: Bool // AC adapter connected (covers the "plugged in, not charging" state)
     let chargeLevel: Double
     let timeRemaining: Double // in minutes
     let present: Bool
@@ -118,10 +119,11 @@ struct BatteryInfo {
     let amperage: Double // in mA
     let voltage: Double // in mV
     let maxCapacity: Int // Maximum capacity percentage
-    
+
     init() {
         self.name = "Unknown"
         self.isCharging = false
+        self.isPluggedIn = false
         self.chargeLevel = 0.0
         self.timeRemaining = 0.0
         self.present = false
@@ -132,10 +134,11 @@ struct BatteryInfo {
         self.voltage = 0.0
         self.maxCapacity = 100
     }
-    
-    init(name: String, isCharging: Bool, chargeLevel: Double, timeRemaining: Double, present: Bool, cycleCount: Int, health: String, temperature: Double, amperage: Double, voltage: Double, maxCapacity: Int = 100) {
+
+    init(name: String, isCharging: Bool, isPluggedIn: Bool, chargeLevel: Double, timeRemaining: Double, present: Bool, cycleCount: Int, health: String, temperature: Double, amperage: Double, voltage: Double, maxCapacity: Int = 100) {
         self.name = name
         self.isCharging = isCharging
+        self.isPluggedIn = isPluggedIn
         self.chargeLevel = chargeLevel
         self.timeRemaining = timeRemaining
         self.present = present
@@ -1889,7 +1892,8 @@ class SystemMonitor {
             // Extract power source information
             let name = description[kIOPSNameKey] as? String ?? "Unknown"
             let type = description[kIOPSTransportTypeKey] as? String ?? "Unknown"
-            _ = description[kIOPSPowerSourceStateKey] as? String ?? "Unknown"
+            let powerSourceState = description[kIOPSPowerSourceStateKey] as? String ?? ""
+            let isPluggedIn = powerSourceState == kIOPSACPowerValue
             let isCharging = (description[kIOPSIsChargingKey] as? Bool) ?? false
             let chargeLevel = (description[kIOPSCurrentCapacityKey] as? Int).map(Double.init) ?? 0.0
             // When charging, IOKit puts the ETA in TimeToFullCharge; TimeToEmpty is 0.
@@ -1932,6 +1936,7 @@ class SystemMonitor {
                 return BatteryInfo(
                     name: name,
                     isCharging: isCharging,
+                    isPluggedIn: isPluggedIn,
                     chargeLevel: chargeLevel,
                     timeRemaining: timeRemaining,
                     present: true,

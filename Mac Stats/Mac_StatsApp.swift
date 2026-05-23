@@ -2274,7 +2274,9 @@ struct PowerSectionView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Battery")
                                 .font(.system(size: 11, weight: .semibold))
-                            Text(battery.isCharging ? "Charging" : "On Battery")
+                            Text(battery.isCharging
+                                 ? "Charging"
+                                 : (battery.isPluggedIn ? "Plugged In" : "On Battery"))
                                 .font(.system(size: 9))
                                 .foregroundColor(.secondary)
                         }
