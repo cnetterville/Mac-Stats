@@ -105,6 +105,21 @@ struct UPSInfo {
     }
 }
 
+enum MemoryPressureLevel: String, Equatable {
+    case normal, warning, critical
+}
+
+struct MemoryStats: Equatable {
+    let used: Double           // GB (App + Wired + Compressed — Activity Monitor's "Memory Used")
+    let total: Double          // GB
+    let appMemory: Double      // GB — anonymous user memory
+    let wired: Double          // GB — kernel-wired
+    let compressed: Double     // GB — VM compressor working set
+    let cached: Double         // GB — file-backed pages reclaimable on demand
+    let free: Double           // GB
+    let pressure: MemoryPressureLevel
+}
+
 // Struct to hold Battery information
 struct BatteryInfo {
     let name: String
@@ -303,6 +318,11 @@ class SystemMonitor {
     var cpuTemperature: Double = 0.0
     var fanInfo: FanInfo = FanInfo() // Add fan information
     var memoryUsage: (used: Double, total: Double) = (0.0, 0.0)
+    var memoryComposition: (app: Double, wired: Double, compressed: Double, cached: Double, free: Double) = (0, 0, 0, 0, 0)
+    var memoryPressure: MemoryPressureLevel = .normal
+    var swapUsage: (used: Double, total: Double) = (0.0, 0.0)
+    var processCount: Int = 0
+    var threadCount: Int = 0
     var diskUsage: (free: Double, total: Double, purgeable: Double) = (0.0, 0.0, 0.0)
     var networkUsage: (upload: Double, download: Double) = (0.0, 0.0)
     var networkInterfaces: [String] = []
@@ -596,7 +616,8 @@ class SystemMonitor {
         
         group.enter()
         DispatchQueue.global(qos: .userInitiated).async {
-            memory = self.getCurrentMemory()
+            let stats = self.getMemoryStats()
+            memory = (used: stats.used, total: stats.total)
             group.leave()
         }
         
@@ -890,17 +911,19 @@ class SystemMonitor {
                 return (cpu, cpuTemp, fan, coreUsages)
             }()
 
-            async let memDiskGroup: (memory: (used: Double, total: Double),
+            async let memDiskGroup: (memory: MemoryStats,
+                                     swap: (used: Double, total: Double),
                                      disk: (free: Double, total: Double, purgeable: Double),
                                      diskIO: (readMBps: Double, writeMBps: Double)) = (
-                memory: self.getCurrentMemory(),
+                memory: self.getMemoryStats(),
+                swap: self.getSwapUsage(),
                 disk: self.getCurrentDisk(),
                 diskIO: self.getDiskIORate()
             )
 
             async let network: (upload: Double, download: Double) = self.getCurrentNetwork()
 
-            async let procs: (cpu: [SystemProcessInfo], memory: [SystemProcessInfo]) =
+            async let procs: (cpu: [SystemProcessInfo], memory: [SystemProcessInfo], processCount: Int, threadCount: Int) =
                 self.getTopProcessesBoth(count: Constants.processCountThreshold)
 
             async let powerSources: (battery: BatteryInfo, ups: UPSInfo) = {
@@ -956,7 +979,21 @@ class SystemMonitor {
                 if abs(self.cpuUsage - cpu) > 0.1 { self.cpuUsage = cpu }
                 if abs(self.cpuTemperature - cpuTemp) > 0.5 { self.cpuTemperature = cpuTemp }
                 if self.fanInfo.speeds != fan.speeds || abs(self.fanInfo.rpm - fan.rpm) > 50 { self.fanInfo = fan }
-                if abs(self.memoryUsage.used - memDisk.memory.used) > 50_000_000 { self.memoryUsage = memDisk.memory }
+                let mem = memDisk.memory
+                if abs(self.memoryUsage.used - mem.used) > 0.05 {
+                    self.memoryUsage = (used: mem.used, total: mem.total)
+                }
+                let newComp = (app: mem.appMemory, wired: mem.wired, compressed: mem.compressed, cached: mem.cached, free: mem.free)
+                if abs(self.memoryComposition.app - newComp.app) > 0.05
+                    || abs(self.memoryComposition.compressed - newComp.compressed) > 0.05
+                    || abs(self.memoryComposition.wired - newComp.wired) > 0.05 {
+                    self.memoryComposition = newComp
+                }
+                if self.memoryPressure != mem.pressure { self.memoryPressure = mem.pressure }
+                if abs(self.swapUsage.used - memDisk.swap.used) > 0.005
+                    || abs(self.swapUsage.total - memDisk.swap.total) > 0.005 {
+                    self.swapUsage = memDisk.swap
+                }
                 if abs(self.diskUsage.free - memDisk.disk.free) > 100_000_000 { self.diskUsage = memDisk.disk }
                 if !coreUsages.isEmpty { self.cpuCoreUsages = coreUsages }
                 if abs(self.diskReadRate - memDisk.diskIO.readMBps) > 0.05 { self.diskReadRate = memDisk.diskIO.readMBps }
@@ -964,6 +1001,8 @@ class SystemMonitor {
                 self.networkUsage = net   // always assign — fluctuates every tick when active
                 self.topProcesses = processList.cpu
                 self.topMemoryProcesses = processList.memory
+                if self.processCount != processList.processCount { self.processCount = processList.processCount }
+                if self.threadCount != processList.threadCount { self.threadCount = processList.threadCount }
                 self.topNetworkProcesses = networkProcesses
                 self.topDiskProcesses = diskProcesses
                 if abs(self.batteryInfo.chargeLevel - battery.chargeLevel) > 0.5
@@ -1161,39 +1200,62 @@ class SystemMonitor {
         return temperature
     }
     
-    private func getCurrentMemory() -> (used: Double, total: Double) {
+    private func getMemoryStats() -> MemoryStats {
         var stats = vm_statistics64()
         let HOST_VM_INFO64_COUNT = MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size
         var count = mach_msg_type_number_t(HOST_VM_INFO64_COUNT)
-        
+
         let result = withUnsafeMutablePointer(to: &stats) { ptr in
             ptr.withMemoryRebound(to: integer_t.self, capacity: HOST_VM_INFO64_COUNT) { reboundPtr in
                 host_statistics64(mach_host_self(), HOST_VM_INFO64, reboundPtr, &count)
             }
         }
-        
-        if result == KERN_SUCCESS {
-            let pageSize = Double(vm_kernel_page_size)
-            
-            // Get total physical memory
-            let totalMemory = ProcessInfo.processInfo.physicalMemory
-            
-            // Correctly calculate used memory based on Activity Monitor's formula
-            let wired = Double(stats.wire_count) * pageSize
-            let active = Double(stats.active_count) * pageSize
-            let compressed = Double(stats.compressor_page_count) * pageSize
-            let used = wired + active + compressed
-
-            // Convert to GB using constant
-            let usedGB = used / Constants.gbDivisor
-            let totalGB = Double(totalMemory) / Constants.gbDivisor
-            
-            return (used: usedGB, total: totalGB)
-        } else {
+        guard result == KERN_SUCCESS else {
             print(" Memory monitoring failed: host_statistics64 error \(result)")
+            return MemoryStats(used: 0, total: 0, appMemory: 0, wired: 0, compressed: 0, cached: 0, free: 0, pressure: .normal)
         }
-        
-        return (used: 0.0, total: 0.0)
+
+        let pageSize = Double(vm_kernel_page_size)
+        let totalMemory = Double(ProcessInfo.processInfo.physicalMemory)
+        let gb = Constants.gbDivisor
+
+        // Activity Monitor breakdown
+        let wiredBytes = Double(stats.wire_count) * pageSize
+        let compressedBytes = Double(stats.compressor_page_count) * pageSize
+        let purgeableBytes = Double(stats.purgeable_count) * pageSize
+        let externalBytes = Double(stats.external_page_count) * pageSize
+        let internalBytes = Double(stats.internal_page_count) * pageSize
+        let freeBytes = Double(stats.free_count + stats.speculative_count) * pageSize
+
+        let appBytes = max(internalBytes - purgeableBytes, 0)
+        let cachedBytes = externalBytes + purgeableBytes
+        let usedBytes = appBytes + wiredBytes + compressedBytes
+
+        // Pressure heuristic: how much of physical memory the compressor is holding
+        let compressionRatio = totalMemory > 0 ? compressedBytes / totalMemory : 0
+        let pressure: MemoryPressureLevel
+        if compressionRatio > 0.20 { pressure = .critical }
+        else if compressionRatio > 0.10 { pressure = .warning }
+        else { pressure = .normal }
+
+        return MemoryStats(
+            used: usedBytes / gb,
+            total: totalMemory / gb,
+            appMemory: appBytes / gb,
+            wired: wiredBytes / gb,
+            compressed: compressedBytes / gb,
+            cached: cachedBytes / gb,
+            free: freeBytes / gb,
+            pressure: pressure
+        )
+    }
+
+    private func getSwapUsage() -> (used: Double, total: Double) {
+        var xsu = xsw_usage()
+        var size = MemoryLayout<xsw_usage>.size
+        guard sysctlbyname("vm.swapusage", &xsu, &size, nil, 0) == 0 else { return (0, 0) }
+        let gb = Constants.gbDivisor
+        return (used: Double(xsu.xsu_used) / gb, total: Double(xsu.xsu_total) / gb)
     }
     
     private func getCurrentDisk() -> (free: Double, total: Double, purgeable: Double) {
@@ -1408,16 +1470,16 @@ class SystemMonitor {
         return (upload: 0.0, download: 0.0)
     }
     
-    private func getTopProcessesBoth(count: Int) -> (cpu: [SystemProcessInfo], memory: [SystemProcessInfo]) {
+    private func getTopProcessesBoth(count: Int) -> (cpu: [SystemProcessInfo], memory: [SystemProcessInfo], processCount: Int, threadCount: Int) {
         let now = Date()
         let byteCount = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
-        guard byteCount > 0 else { return ([], []) }
+        guard byteCount > 0 else { return ([], [], 0, 0) }
 
         var pidBuf = [pid_t](repeating: 0, count: Int(byteCount) / MemoryLayout<pid_t>.size + 1)
         let actualBytes = pidBuf.withUnsafeMutableBytes { ptr -> Int32 in
             proc_listpids(UInt32(PROC_ALL_PIDS), 0, ptr.baseAddress, Int32(ptr.count))
         }
-        guard actualBytes > 0 else { return ([], []) }
+        guard actualBytes > 0 else { return ([], [], 0, 0) }
 
         let pidCount = Int(actualBytes) / MemoryLayout<pid_t>.size
         let pids = pidBuf.prefix(pidCount).filter { $0 > 0 }
@@ -1428,10 +1490,15 @@ class SystemMonitor {
         var memList: [SystemProcessInfo] = []
         var newCPUTimes: [pid_t: (user: UInt64, system: UInt64, time: Date)] = [:]
         newCPUTimes.reserveCapacity(pids.count)
+        var liveProcessCount = 0
+        var liveThreadCount = 0
 
         for pid in pids {
             var taskInfo = proc_taskinfo()
             guard proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &taskInfo, taskInfoSize) == taskInfoSize else { continue }
+
+            liveProcessCount += 1
+            liveThreadCount += Int(taskInfo.pti_threadnum)
 
             let userTime = taskInfo.pti_total_user
             let systemTime = taskInfo.pti_total_system
@@ -1462,7 +1529,9 @@ class SystemMonitor {
         previousProcessCPUTimes = newCPUTimes
         return (
             cpu: Array(cpuList.sorted { $0.cpuUsage > $1.cpuUsage }.prefix(count)),
-            memory: Array(memList.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count))
+            memory: Array(memList.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count)),
+            processCount: liveProcessCount,
+            threadCount: liveThreadCount
         )
     }
     

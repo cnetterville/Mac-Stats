@@ -735,7 +735,62 @@ struct MemorySectionView: View {
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
-            
+
+            // Composition / Pressure / Swap / Process counts
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Memory Composition")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(memoryPressureLabel)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(memoryPressureColor.gradient)
+                        )
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                    compositionRow(label: "App", value: systemMonitor.memoryComposition.app, color: .purple)
+                    compositionRow(label: "Wired", value: systemMonitor.memoryComposition.wired, color: .red)
+                    compositionRow(label: "Compressed", value: systemMonitor.memoryComposition.compressed, color: .orange)
+                    compositionRow(label: "Cached", value: systemMonitor.memoryComposition.cached, color: .blue)
+                    compositionRow(label: "Free", value: systemMonitor.memoryComposition.free, color: .green)
+                    if systemMonitor.swapUsage.total > 0 {
+                        compositionRow(label: "Swap",
+                                       value: systemMonitor.swapUsage.used,
+                                       color: systemMonitor.swapUsage.used > 0.1 ? .orange : .secondary)
+                    }
+                }
+
+                if systemMonitor.processCount > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.grid.3x3.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Text("\(systemMonitor.processCount) processes · \(systemMonitor.threadCount) threads")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
             // Memory History Chart
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -819,6 +874,38 @@ struct MemorySectionView: View {
         case 50..<70: return .blue
         case 70..<85: return .orange
         default: return .red
+        }
+    }
+
+    private var memoryPressureLabel: String {
+        switch systemMonitor.memoryPressure {
+        case .normal: return "Normal"
+        case .warning: return "Warning"
+        case .critical: return "Critical"
+        }
+    }
+
+    private var memoryPressureColor: Color {
+        switch systemMonitor.memoryPressure {
+        case .normal: return .green
+        case .warning: return .orange
+        case .critical: return .red
+        }
+    }
+
+    @ViewBuilder
+    private func compositionRow(label: String, value: Double, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 6, height: 6)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+            Spacer()
+            Text(String(format: "%.2f GB", value))
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundColor(.primary)
         }
     }
 }
