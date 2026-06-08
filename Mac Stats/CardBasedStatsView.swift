@@ -353,32 +353,33 @@ struct CardBasedStatsView: View {
                                 .glassTextVibrancy()
                             Spacer()
                             
-                            VStack(alignment: .trailing, spacing: 2) {
+                            if systemMonitor.fanInfo.isEstimate {
+                                Text("No fans")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
+                            } else {
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .monospacedDigit()
-                                        .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
-                                        .glassTextVibrancy()
-                                    if let target = systemMonitor.fanInfo.targetSpeeds.first {
-                                        Text(String(format: "Target: %d RPM", target))
-                                            .font(.caption2)
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(String(format: "%.0f RPM", systemMonitor.fanInfo.rpm))
+                                            .font(.subheadline)
+                                            .fontWeight(.semibold)
                                             .monospacedDigit()
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(fanSpeedColor(for: systemMonitor.fanInfo.rpm))
                                             .glassTextVibrancy()
+                                        if let target = systemMonitor.fanInfo.targetSpeeds.first {
+                                            Text(String(format: "Target: %d RPM", target))
+                                                .font(.caption2)
+                                                .monospacedDigit()
+                                                .foregroundColor(.secondary)
+                                                .glassTextVibrancy()
+                                        }
                                     }
-                                }
-                                
-                                if systemMonitor.fanInfo.isEstimate {
-                                    Text("Estimated")
-                                        .font(.caption2)
-                                        .foregroundColor(.secondary)
-                                        .glassTextVibrancy()
                                 }
                             }
                         }
-                        
+
                         HStack {
                             HStack(spacing: 4) {
                                 Image(systemName: getThermalPressureIcon(for: systemMonitor.fanInfo.thermalState))
@@ -390,23 +391,27 @@ struct CardBasedStatsView: View {
                                     .foregroundColor(.secondary)
                                     .glassTextVibrancy()
                             }
-                            
+
                             Spacer()
-                            
-                            Text(String(format: "%.0f%% of max", (systemMonitor.fanInfo.rpm / systemMonitor.fanInfo.maxRPM) * 100))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundColor(.secondary)
-                                .glassTextVibrancy()
+
+                            if !systemMonitor.fanInfo.isEstimate {
+                                Text(String(format: "%.0f%% of max", (systemMonitor.fanInfo.rpm / systemMonitor.fanInfo.maxRPM) * 100))
+                                    .font(.caption)
+                                    .monospacedDigit()
+                                    .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
+                            }
                         }
-                        
-                        // Mini fan speed progress bar with glass effect
-                        GlassProgressView(
-                            value: systemMonitor.fanInfo.rpm,
-                            total: systemMonitor.fanInfo.maxRPM,
-                            color: fanSpeedColor(for: systemMonitor.fanInfo.rpm),
-                            height: 6
-                        )
+
+                        if !systemMonitor.fanInfo.isEstimate {
+                            // Mini fan speed progress bar with glass effect
+                            GlassProgressView(
+                                value: systemMonitor.fanInfo.rpm,
+                                total: systemMonitor.fanInfo.maxRPM,
+                                color: fanSpeedColor(for: systemMonitor.fanInfo.rpm),
+                                height: 6
+                            )
+                        }
                     }
                     
                     // Top CPU Processes with enhanced display

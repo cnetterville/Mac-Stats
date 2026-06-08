@@ -301,7 +301,7 @@ struct MenuBarIconView: View {
             VStack(alignment: .center, spacing: compactSpacing) {
                 Text("FAN")
                     .font(compactFont)
-                Text(rpm > 0 ? formatRPM(rpm) : "---")
+                Text(systemMonitor.fanInfo.isEstimate ? "---" : formatRPM(rpm))
                     .font(dataFont)
             }
             if preferences.showMenuBarFanChart {
