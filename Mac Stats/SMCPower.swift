@@ -218,6 +218,7 @@ struct SMCPowerBatch {
     let gpuTemperature: Double?
     let ssdTemperature: Double?
     let dcInPower: Double?
+    let memoryTemperature: Double?
 }
 
 func readSMCPowerBatch() -> SMCPowerBatch {
@@ -260,8 +261,19 @@ func readSMCPowerBatch() -> SMCPowerBatch {
             return watts > 0 ? watts : nil
         }()
 
-        return SMCPowerBatch(systemPower: systemPower, gpuTemperature: gpuTemp, ssdTemperature: ssdTemp, dcInPower: dcIn)
-    } ?? SMCPowerBatch(systemPower: nil, gpuTemperature: nil, ssdTemperature: nil, dcInPower: nil)
+        let memTemp: Double? = {
+            for key in ["Tm02", "TM0P", "Tm04", "TM0p"] {
+                guard let bytes = smcRead(conn, key: key, size: 4), bytes.count >= 4 else { continue }
+                var value: Float32 = 0
+                withUnsafeMutableBytes(of: &value) { $0.copyBytes(from: bytes[0..<4]) }
+                let celsius = Double(value)
+                if celsius >= 20 && celsius < 100 { return celsius }
+            }
+            return nil
+        }()
+
+        return SMCPowerBatch(systemPower: systemPower, gpuTemperature: gpuTemp, ssdTemperature: ssdTemp, dcInPower: dcIn, memoryTemperature: memTemp)
+    } ?? SMCPowerBatch(systemPower: nil, gpuTemperature: nil, ssdTemperature: nil, dcInPower: nil, memoryTemperature: nil)
 }
 
 // MARK: - Connection helper

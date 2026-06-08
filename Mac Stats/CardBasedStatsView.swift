@@ -337,6 +337,14 @@ struct CardBasedStatsView: View {
                             }
                     }
                     
+                    if systemMonitor.gpuTemperature > 0 {
+                        InfoRowView(
+                            label: "GPU Temp",
+                            value: TemperatureMonitor.formatTemperature(systemMonitor.gpuTemperature, unit: preferences.temperatureUnit, showBoth: false),
+                            valueColor: temperatureColor(for: systemMonitor.gpuTemperature)
+                        )
+                    }
+
                     // Fan Speed Information
                     Divider()
                         .opacity(0.5)
@@ -574,6 +582,14 @@ struct CardBasedStatsView: View {
                         }
                     }
                     
+                    if systemMonitor.memoryTemperature > 0 {
+                        InfoRowView(
+                            label: "RAM Temp",
+                            value: TemperatureMonitor.formatTemperature(systemMonitor.memoryTemperature, unit: preferences.temperatureUnit, showBoth: false),
+                            valueColor: temperatureColor(for: systemMonitor.memoryTemperature)
+                        )
+                    }
+
                     // Memory history sparkline
                     if !systemMonitor.memoryHistory.isEmpty {
                         Divider()
@@ -1305,7 +1321,18 @@ struct CardBasedStatsView: View {
                     InfoRowView(label: "Cycle Count", value: "\(systemMonitor.batteryInfo.cycleCount)")
                     InfoRowView(label: "Time Remaining", value: formatTime(systemMonitor.batteryInfo.timeRemaining))
                     InfoRowView(label: "Max Capacity", value: "\(systemMonitor.batteryInfo.maxCapacity)%")
-                    
+
+                    let battAmps = systemMonitor.batteryInfo.amperage
+                    let battVolts = systemMonitor.batteryInfo.voltage
+                    if battAmps != 0 && battVolts > 0 {
+                        let battWatts = battAmps * battVolts / 1_000_000
+                        InfoRowView(
+                            label: battWatts < 0 ? "Discharging" : "Charging",
+                            value: String(format: "%.1f W", abs(battWatts)),
+                            valueColor: battWatts < 0 ? .orange : .green
+                        )
+                    }
+
                     if systemMonitor.batteryInfo.health != "Unknown" {
                         InfoRowView(label: "Health", value: systemMonitor.batteryInfo.health)
                     }

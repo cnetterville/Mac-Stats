@@ -350,6 +350,7 @@ class SystemMonitor {
     var initialDataLoaded: Bool = false
     var gpuTemperature: Double = 0.0
     var ssdTemperature: Double = 0.0
+    var memoryTemperature: Double = 0.0
     var dcInPower: Double = 0.0
     var diskReadRate: Double = 0.0
     var diskWriteRate: Double = 0.0
@@ -1126,14 +1127,16 @@ class SystemMonitor {
             let gpuTemp  = smcPowerBatch.gpuTemperature ?? 0.0
             let ssdTemp  = smcPowerBatch.ssdTemperature ?? 0.0
             let dcInWatts = smcPowerBatch.dcInPower ?? 0.0
+            let memTemp  = smcPowerBatch.memoryTemperature ?? 0.0
             DispatchQueue.main.async {
                 if abs(self.powerConsumptionInfo.totalSystemPower - powerConsumption.totalSystemPower) > 0.5 {
                     self.powerConsumptionInfo = powerConsumption
                 }
                 self.updatePowerHistory(with: dcInWatts > 0 ? dcInWatts : powerConsumption.totalSystemPower)
-                if abs(self.gpuTemperature - gpuTemp) > 0.5 { self.gpuTemperature = gpuTemp }
-                if abs(self.ssdTemperature - ssdTemp) > 0.5 { self.ssdTemperature = ssdTemp }
-                if abs(self.dcInPower - dcInWatts) > 0.5    { self.dcInPower = dcInWatts }
+                if abs(self.gpuTemperature - gpuTemp) > 0.5     { self.gpuTemperature = gpuTemp }
+                if abs(self.ssdTemperature - ssdTemp) > 0.5    { self.ssdTemperature = ssdTemp }
+                if abs(self.dcInPower - dcInWatts) > 0.5       { self.dcInPower = dcInWatts }
+                if abs(self.memoryTemperature - memTemp) > 0.5 { self.memoryTemperature = memTemp }
             }
         }
     }
