@@ -1974,9 +1974,9 @@ class SystemMonitor {
             )
         }
 
-        // Fall back to thermal estimate
+        // No fans detected on this hardware
         return FanInfo(
-            rpm: thermalInfo.fanEstimate,
+            rpm: 0,
             isEstimate: true,
             thermalState: thermalInfo.state,
             thermalPressure: thermalInfo.pressure,

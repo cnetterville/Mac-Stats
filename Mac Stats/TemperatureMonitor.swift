@@ -83,34 +83,6 @@ class TemperatureMonitor {
         return temperature
     }
     
-    // Estimate fan speed based on temperature and thermal state
-    static func estimateFanSpeed() -> (rpm: Double, isEstimate: Bool) {
-        let temperature = averageCPUTemperature()
-        let thermalState = getThermalState()
-        
-        // Estimate fan speed based on temperature curves for Apple Silicon
-        let estimatedRPM: Double
-        
-        if temperature < 40 {
-            estimatedRPM = 1200 // Base fan speed for Apple Silicon
-        } else if temperature < 60 {
-            // Linear increase from 1200 to 2500 RPM
-            estimatedRPM = 1200 + ((temperature - 40) / 20) * 1300
-        } else if temperature < 80 {
-            // Faster increase from 2500 to 4500 RPM
-            estimatedRPM = 2500 + ((temperature - 60) / 20) * 2000
-        } else {
-            // High temperature - estimated max fan speed
-            estimatedRPM = min(6000, 4500 + ((temperature - 80) / 20) * 1500)
-        }
-        
-        // Adjust based on thermal state
-        let thermalAdjustment = Double(thermalState) * 500
-        let finalRPM = estimatedRPM + thermalAdjustment
-        
-        return (rpm: finalRPM, isEstimate: true)
-    }
-    
     // Get thermal state from system (0 = normal, higher = more thermal pressure)
     static func getThermalState() -> Int {
         var thermalState: Int32 = 0
@@ -138,10 +110,8 @@ class TemperatureMonitor {
     }
     
     // Get detailed thermal information
-    static func getThermalInfo() -> (state: Int, pressure: String, fanEstimate: Double) {
+    static func getThermalInfo() -> (state: Int, pressure: String) {
         let state = getThermalState()
-        let fanSpeed = estimateFanSpeed()
-        
         let pressure: String
         switch state {
         case 0: pressure = "Normal"
@@ -150,8 +120,7 @@ class TemperatureMonitor {
         case 3: pressure = "Heavy"
         default: pressure = "Critical"
         }
-        
-        return (state: state, pressure: pressure, fanEstimate: fanSpeed.rpm)
+        return (state: state, pressure: pressure)
     }
     
     // Check if real temperature sensors are available
