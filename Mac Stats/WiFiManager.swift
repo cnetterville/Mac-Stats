@@ -22,7 +22,25 @@ struct WiFiInfo {
     let isWiFiEnabled: Bool
     let linkQuality: Double // 0.0 to 1.0
     let hasLocationPermission: Bool
-    
+    let channel: Int        // WiFi channel number (0 = unknown)
+    let band: String        // "2.4 GHz", "5 GHz", "6 GHz", or ""
+
+    init(isConnected: Bool, networkName: String, signalStrength: Int, securityType: String,
+         hasPermission: Bool, errorMessage: String?, isWiFiEnabled: Bool, linkQuality: Double,
+         hasLocationPermission: Bool, channel: Int = 0, band: String = "") {
+        self.isConnected = isConnected
+        self.networkName = networkName
+        self.signalStrength = signalStrength
+        self.securityType = securityType
+        self.hasPermission = hasPermission
+        self.errorMessage = errorMessage
+        self.isWiFiEnabled = isWiFiEnabled
+        self.linkQuality = linkQuality
+        self.hasLocationPermission = hasLocationPermission
+        self.channel = channel
+        self.band = band
+    }
+
     static let disconnected = WiFiInfo(
         isConnected: false,
         networkName: "",
@@ -34,7 +52,7 @@ struct WiFiInfo {
         linkQuality: 0.0,
         hasLocationPermission: false
     )
-    
+
     static let noPermission = WiFiInfo(
         isConnected: false,
         networkName: "",
@@ -172,12 +190,17 @@ class WiFiManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         var signalStrength = -100
         var securityType = ""
         
+        var channel = 0
+        var band = ""
+
         if let ssidName = ssid, !ssidName.isEmpty {
             // We got SSID successfully
             isConnected = true
             networkName = ssidName
             signalStrength = interface.rssiValue()
             securityType = getSecurityType(from: interface)
+            channel = interface.wlanChannel()?.channelNumber ?? 0
+            band = getBandString(from: interface.wlanChannel()?.channelBand)
             print("Successfully got WiFi details via CoreWLAN")
         } else if isWiFiEnabled {
             // WiFi is enabled but no SSID - might be permission issue or not connected
@@ -224,7 +247,9 @@ class WiFiManager: NSObject, ObservableObject, CLLocationManagerDelegate {
                 errorMessage: isConnected ? nil : (isWiFiEnabled ? "Not connected to any network" : "WiFi is disabled"),
                 isWiFiEnabled: isWiFiEnabled,
                 linkQuality: quality,
-                hasLocationPermission: hasLocationPermission
+                hasLocationPermission: hasLocationPermission,
+                channel: channel,
+                band: band
             )
         }
         
@@ -407,6 +432,17 @@ class WiFiManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         return Double(normalizedRssi + 90) / 60.0
     }
     
+    private func getBandString(from band: CWChannelBand?) -> String {
+        guard let band else { return "" }
+        switch band {
+        case .bandUnknown: return ""
+        case .band2GHz: return "2.4 GHz"
+        case .band5GHz: return "5 GHz"
+        case .band6GHz: return "6 GHz"
+        @unknown default: return ""
+        }
+    }
+
     private func getSecurityType(from interface: CWInterface) -> String {
         let security = interface.security()
         

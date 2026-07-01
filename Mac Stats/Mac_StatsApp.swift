@@ -120,144 +120,199 @@ struct MenuBarDropdownView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
-    @State private var selectedTab: MonitorTab = .cpu
-    
+    @AppStorage("lastMenuTab") private var selectedTab: MonitorTab = .cpu
+
     enum MonitorTab: String, CaseIterable {
         case cpu = "CPU"
         case memory = "Memory"
         case network = "Network"
         case disk = "Disk"
         case power = "Power"
-        
+
         var icon: String {
             switch self {
-            case .cpu: return "cpu.fill"
-            case .memory: return "memorychip.fill"
+            case .cpu:     return "cpu.fill"
+            case .memory:  return "memorychip.fill"
             case .network: return "antenna.radiowaves.left.and.right"
-            case .disk: return "internaldrive.fill"
-            case .power: return "bolt.fill"
+            case .disk:    return "internaldrive.fill"
+            case .power:   return "bolt.fill"
             }
         }
-        
+
         var color: Color {
             switch self {
-            case .cpu: return .blue
-            case .memory: return .purple
+            case .cpu:     return .blue
+            case .memory:  return .purple
             case .network: return .green
-            case .disk: return .mint
-            case .power: return .yellow
+            case .disk:    return .mint
+            case .power:   return .yellow
+            }
+        }
+
+        var shortLabel: String {
+            switch self {
+            case .cpu:     return "CPU"
+            case .memory:  return "Mem"
+            case .network: return "Net"
+            case .disk:    return "Disk"
+            case .power:   return "Power"
             }
         }
     }
-    
+
+    // MARK: - Computed stats for the mini-strip
+
+    private var memPercent: Double {
+        guard systemMonitor.memoryUsage.total > 0 else { return 0 }
+        return (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100
+    }
+
+    private var downloadMbps: Double {
+        (systemMonitor.networkUsage.download * 8) / 1_000_000
+    }
+
+    private var miniSpeedString: String {
+        if downloadMbps >= 1000 { return String(format: "%.1fG↓", downloadMbps / 1000) }
+        if downloadMbps >= 10   { return String(format: "%.0fM↓", downloadMbps) }
+        if downloadMbps >= 0.1  { return String(format: "%.1fM↓", downloadMbps) }
+        return "0↓"
+    }
+
+    // MARK: - Body
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header with gradient background
-            VStack(spacing: 12) {
-                // Title and icon (dynamic based on selected tab)
-                HStack {
-                    Image(systemName: selectedTab.icon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab.color.gradient)
-                    Text("\(selectedTab.rawValue) Monitor")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.primary)
-                    Spacer()
-                }
-                
-                // Tab picker
-                Picker("Monitor Type", selection: $selectedTab) {
+            // Header
+            VStack(spacing: 8) {
+                // Custom icon tab bar
+                HStack(spacing: 2) {
                     ForEach(MonitorTab.allCases, id: \.self) { tab in
-                        Text(tab.rawValue)
-                            .tag(tab)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                selectedTab = tab
+                            }
+                        } label: {
+                            VStack(spacing: 3) {
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 14, weight: .medium))
+                                Text(tab.shortLabel)
+                                    .font(.system(size: 9, weight: selectedTab == tab ? .semibold : .regular))
+                            }
+                            .foregroundColor(selectedTab == tab ? tab.color : .secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(selectedTab == tab ? tab.color.opacity(0.15) : Color.clear)
+                                    .animation(.easeInOut(duration: 0.18), value: selectedTab)
+                            )
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                
-                // Quick action buttons
-                HStack {
+
+                // Live mini-stats strip + action buttons
+                HStack(spacing: 8) {
+                    miniStat(icon: "cpu.fill",        value: "\(Int(systemMonitor.cpuUsage))%",  color: .blue)
+                    miniStat(icon: "memorychip.fill",  value: "\(Int(memPercent))%",              color: .purple)
+                    miniStat(icon: "arrow.down",       value: miniSpeedString,                    color: .green)
+                    if systemMonitor.batteryInfo.present {
+                        let pct = systemMonitor.batteryInfo.chargeLevel
+                        miniStat(icon: systemMonitor.batteryInfo.isCharging ? "bolt.fill" : "battery.100",
+                                 value: "\(Int(pct))%",
+                                 color: pct < 20 ? .red : pct < 40 ? .orange : .green)
+                    }
+
                     Spacer()
-                    Button(action: {
+
+                    Button {
                         openWindow(id: "main")
                         dismissMenu()
-                    }) {
+                    } label: {
                         Image(systemName: "macwindow")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
                     .help("Open Main Window")
 
-                    Button(action: {
+                    Button {
                         openWindow(id: "settings")
                         dismissMenu()
-                    }) {
+                    } label: {
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    .buttonStyle(.plain)
                     .help("Open Settings")
                 }
             }
-            .padding(16)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
             .background(
                 LiquidGlassBackground(material: .headerView, cornerRadius: 0, borderWidth: 0, borderOpacity: 0)
             )
-            
+
             Divider()
-            
+
             ScrollView(.vertical, showsIndicators: true) {
-                VStack(spacing: 0) {
-                    // Switch between monitor views with smooth fade transition
-                    Group {
-                        switch selectedTab {
-                        case .cpu:
-                            CPUSectionView(openWindow: openWindow)
-                                .environment(systemMonitor)
-                        case .memory:
-                            MemorySectionView(openWindow: openWindow)
-                                .environment(systemMonitor)
-                        case .network:
-                            NetworkSectionView(openWindow: openWindow)
-                                .environment(systemMonitor)
-                        case .disk:
-                            DiskSectionView()
-                                .environment(systemMonitor)
-                        case .power:
-                            PowerSectionView()
-                                .environment(systemMonitor)
-                        }
+                Group {
+                    switch selectedTab {
+                    case .cpu:
+                        CPUSectionView(openWindow: openWindow)
+                            .environment(systemMonitor)
+                    case .memory:
+                        MemorySectionView(openWindow: openWindow)
+                            .environment(systemMonitor)
+                    case .network:
+                        NetworkSectionView(openWindow: openWindow)
+                            .environment(systemMonitor)
+                    case .disk:
+                        DiskSectionView()
+                            .environment(systemMonitor)
+                    case .power:
+                        PowerSectionView()
+                            .environment(systemMonitor)
                     }
                 }
+                .animation(.easeInOut(duration: 0.18), value: selectedTab)
             }
             .scrollBounceBehavior(.basedOnSize)
-            
-            // Footer with quit action
+
+            // Footer
             Divider()
-            HStack {
-                Text("Mac Stats")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Button(action: { NSApplication.shared.terminate(nil) }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "power")
-                            .font(.system(size: 10))
-                        Text("Quit")
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                    .foregroundColor(.secondary)
+            Button(action: { NSApplication.shared.terminate(nil) }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "power")
+                        .font(.system(size: 10))
+                    Text("Quit Mac Stats")
+                        .font(.system(size: 10, weight: .medium))
                 }
-                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
         }
         .frame(width: 320, height: 620)
     }
-    
+
+    // MARK: - Helpers
+
+    @ViewBuilder
+    private func miniStat(icon: String, value: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundColor(color.opacity(0.85))
+            Text(value)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundColor(.primary.opacity(0.8))
+        }
+    }
+
     private func dismissMenu() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NSApp.sendAction(Selector(("dismiss:")), to: nil, from: nil)
@@ -410,6 +465,32 @@ struct CPUSectionView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 16)
                 }
+
+                // Load averages
+                if systemMonitor.cpuLoadAverages.one > 0 {
+                    Divider().opacity(0.3).padding(.horizontal, 20)
+                    HStack(spacing: 0) {
+                        Text("Load Avg")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        ForEach([(systemMonitor.cpuLoadAverages.one, "1m"),
+                                 (systemMonitor.cpuLoadAverages.five, "5m"),
+                                 (systemMonitor.cpuLoadAverages.fifteen, "15m")], id: \.1) { value, label in
+                            VStack(spacing: 2) {
+                                Text(String(format: "%.2f", value))
+                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(value > 4 ? .red : value > 2 ? .orange : .primary)
+                                Text(label)
+                                    .font(.system(size: 8))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(width: 44)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
@@ -421,7 +502,7 @@ struct CPUSectionView: View {
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
-            
+
             // Top Processes Section
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -1006,6 +1087,7 @@ struct MemoryProcessRowView: View {
 struct NetworkSectionView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var externalIPManager: ExternalIPManager
+    @EnvironmentObject var wifiManager: WiFiManager
     let openWindow: OpenWindowAction
     
     private var downloadMbps: Double {
@@ -1055,6 +1137,24 @@ struct NetworkSectionView: View {
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
+                        // Local IP
+                        if !systemMonitor.localIPAddress.isEmpty {
+                            HStack(spacing: 6) {
+                                Image(systemName: "wifi")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text("Local IP")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                            Text(systemMonitor.localIPAddress)
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.primary)
+                                .textSelection(.enabled)
+                            Divider()
+                                .padding(.vertical, 2)
+                        }
+
                         // External IP
                         HStack(spacing: 6) {
                             Image(systemName: "network")
@@ -1122,6 +1222,68 @@ struct NetworkSectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
             
+            // WiFi Card
+            if wifiManager.wifiInfo.isConnected && !wifiManager.wifiInfo.networkName.isEmpty {
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.green.opacity(0.1))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: wifiSignalIcon(wifiManager.wifiInfo.linkQuality))
+                                .font(.system(size: 18))
+                                .foregroundStyle(Color.green.gradient)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(wifiManager.wifiInfo.networkName)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+
+                            HStack(spacing: 8) {
+                                Text(String(format: "%.0f%%", wifiManager.wifiInfo.linkQuality * 100))
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(.green)
+
+                                if wifiManager.wifiInfo.channel > 0 {
+                                    Text("Ch \(wifiManager.wifiInfo.channel)")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                if !wifiManager.wifiInfo.band.isEmpty {
+                                    Text(wifiManager.wifiInfo.band)
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+
+                        Spacer()
+
+                        // Signal quality bar
+                        VStack(spacing: 2) {
+                            signalStrengthBars(quality: wifiManager.wifiInfo.linkQuality)
+                            Text("\(wifiManager.wifiInfo.signalStrength) dBm")
+                                .font(.system(size: 8, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(14)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
             // Main Network Usage Card
             VStack(spacing: 0) {
                 // Network Usage Display
@@ -1275,6 +1437,50 @@ struct NetworkSectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             
+            // Session totals card
+            if systemMonitor.sessionBytesDownloaded > 0 || systemMonitor.sessionBytesUploaded > 0 {
+                HStack(spacing: 0) {
+                    Spacer()
+                    VStack(spacing: 2) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.blue.gradient)
+                        Text("Downloaded")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Text(formatSessionBytes(systemMonitor.sessionBytesDownloaded))
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.blue)
+                    }
+                    Spacer()
+                    Divider().frame(height: 36)
+                    Spacer()
+                    VStack(spacing: 2) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.orange.gradient)
+                        Text("Uploaded")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Text(formatSessionBytes(systemMonitor.sessionBytesUploaded))
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.orange)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
             // Top Network Processes Section
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -1337,11 +1543,42 @@ struct NetworkSectionView: View {
     }
     
     private func cleanISPName(_ ispName: String) -> String {
-        // Remove AS number prefix (e.g., "AS15169 Google LLC" -> "Google LLC")
         if let asRange = ispName.range(of: "^AS\\d+\\s+", options: .regularExpression) {
             return String(ispName[asRange.upperBound...])
         }
         return ispName
+    }
+
+    private func wifiSignalIcon(_ quality: Double) -> String {
+        switch quality {
+        case 0.75...: return "wifi"
+        case 0.5..<0.75: return "wifi"
+        case 0.25..<0.5: return "wifi.exclamationmark"
+        default: return "wifi.slash"
+        }
+    }
+
+    @ViewBuilder
+    private func signalStrengthBars(quality: Double) -> some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(0..<4, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(Double(i + 1) <= quality * 4 ? Color.green : Color.gray.opacity(0.3))
+                    .frame(width: 4, height: CGFloat(4 + i * 3))
+            }
+        }
+    }
+
+    private func formatSessionBytes(_ bytes: Double) -> String {
+        if bytes >= 1_073_741_824 {
+            return String(format: "%.2f GB", bytes / 1_073_741_824)
+        } else if bytes >= 1_048_576 {
+            return String(format: "%.1f MB", bytes / 1_048_576)
+        } else if bytes >= 1024 {
+            return String(format: "%.0f KB", bytes / 1024)
+        } else {
+            return "< 1 KB"
+        }
     }
 }
 
@@ -1552,6 +1789,45 @@ struct DiskSectionView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color(NSColor.controlBackgroundColor).opacity(0.5)))
                     Spacer()
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            // Disk I/O History
+            if !systemMonitor.diskReadHistory.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("I/O History")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.mint).frame(width: 6, height: 6)
+                            Text("Read").font(.system(size: 9, weight: .medium)).foregroundColor(.secondary)
+                        }
+                        GenericSparklineView(data: systemMonitor.diskReadHistory, color: .mint)
+                            .frame(height: 30)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Circle().fill(Color.orange).frame(width: 6, height: 6)
+                            Text("Write").font(.system(size: 9, weight: .medium)).foregroundColor(.secondary)
+                        }
+                        GenericSparklineView(data: systemMonitor.diskWriteHistory, color: .orange)
+                            .frame(height: 30)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
             }
@@ -2168,6 +2444,56 @@ struct MemorySparklineView: View {
     }
 }
 
+// Generic sparkline for any already-scaled rate data (MB/s, etc.)
+struct GenericSparklineView: View {
+    let data: [Double]
+    let color: Color
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottom) {
+                LinearGradient(
+                    colors: [color.opacity(0.3), color.opacity(0.05)],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .mask(areaPath(in: geometry.size))
+
+                linePath(in: geometry.size)
+                    .stroke(color.gradient, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.05)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func linePath(in size: CGSize) -> Path {
+        Path { path in
+            guard data.count > 1 else { return }
+            let maxVal = max(data.max() ?? 1, 0.001)
+            let stepX = size.width / CGFloat(data.count - 1)
+            path.move(to: CGPoint(x: 0, y: size.height - CGFloat(data[0] / maxVal) * size.height))
+            for (i, v) in data.enumerated() {
+                path.addLine(to: CGPoint(x: CGFloat(i) * stepX, y: size.height - CGFloat(v / maxVal) * size.height))
+            }
+        }
+    }
+
+    private func areaPath(in size: CGSize) -> Path {
+        Path { path in
+            guard data.count > 1 else { return }
+            let maxVal = max(data.max() ?? 1, 0.001)
+            let stepX = size.width / CGFloat(data.count - 1)
+            path.move(to: CGPoint(x: 0, y: size.height))
+            path.addLine(to: CGPoint(x: 0, y: size.height - CGFloat(data[0] / maxVal) * size.height))
+            for (i, v) in data.enumerated() {
+                path.addLine(to: CGPoint(x: CGFloat(i) * stepX, y: size.height - CGFloat(v / maxVal) * size.height))
+            }
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.closeSubpath()
+        }
+    }
+}
+
 // Power Section
 struct PowerSectionView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
@@ -2227,42 +2553,26 @@ struct PowerSectionView: View {
                 }
                 .padding(20)
 
-                // Temperature + fan row
-                HStack(spacing: 12) {
-                    // CPU temp
-                    HStack(spacing: 6) {
-                        Image(systemName: "thermometer.medium")
-                            .font(.system(size: 11))
-                            .foregroundColor(tempColor(temp))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("CPU")
-                                .font(.system(size: 9))
-                                .foregroundColor(.secondary)
-                            Text(formatTemp(temp))
-                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                .foregroundColor(tempColor(temp))
-                        }
+                // Temperatures row
+                HStack(spacing: 10) {
+                    powerTempBadge(label: "CPU", temp: temp, icon: "thermometer.medium")
+                    if systemMonitor.gpuTemperature > 0 {
+                        powerTempBadge(label: "GPU", temp: systemMonitor.gpuTemperature, icon: "display")
                     }
-
-                    // SSD temp (if available)
+                    if systemMonitor.memoryTemperature > 0 {
+                        powerTempBadge(label: "RAM", temp: systemMonitor.memoryTemperature, icon: "memorychip")
+                    }
                     if systemMonitor.ssdTemperature > 0 {
-                        HStack(spacing: 6) {
-                            Image(systemName: "internaldrive")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text("SSD")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.secondary)
-                                Text(formatTemp(systemMonitor.ssdTemperature))
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(systemMonitor.ssdTemperature > 60 ? .orange : .primary)
-                            }
-                        }
+                        powerTempBadge(label: "SSD", temp: systemMonitor.ssdTemperature, icon: "internaldrive")
                     }
-
                     Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
 
+                // Fan row
+                HStack {
+                    Spacer()
                     HStack(spacing: 6) {
                         Image(systemName: "fan.fill")
                             .font(.system(size: 11))
@@ -2472,6 +2782,23 @@ struct PowerSectionView: View {
             }
 
             Spacer().frame(height: 16)
+        }
+    }
+
+    @ViewBuilder
+    private func powerTempBadge(label: String, temp: Double, icon: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 10))
+                .foregroundColor(tempColor(temp))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 8))
+                    .foregroundColor(.secondary)
+                Text(formatTemp(temp))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(tempColor(temp))
+            }
         }
     }
 

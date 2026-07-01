@@ -357,6 +357,8 @@ class SystemMonitor {
     var cpuCoreUsages: [Double] = []
     var pCoreCount: Int = 0
     var eCoreCount: Int = 0
+    var cpuLoadAverages: (one: Double, five: Double, fifteen: Double) = (0, 0, 0)
+    var localIPAddress: String = ""
     var cpuHistory: [Double] = []
     var cpuTemperatureHistory: [Double] = []
     var memoryHistory: [Double] = []
@@ -364,6 +366,10 @@ class SystemMonitor {
     var fanHistory: [Double] = []
     var uploadHistory: [Double] = []
     var downloadHistory: [Double] = []
+    var diskReadHistory: [Double] = []
+    var diskWriteHistory: [Double] = []
+    var sessionBytesDownloaded: Double = 0.0
+    var sessionBytesUploaded: Double = 0.0
 
     /// Fires once per updateStats tick on the main thread. Used by legacy Combine
     /// subscribers (MenuBarImageManager, MenuBarLabelView) that still need an
@@ -997,7 +1003,7 @@ class SystemMonitor {
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
 
-            async let cpuGroup: (cpu: Double, cpuTemp: Double, fan: FanInfo, coreUsages: [Double]) = {
+            async let cpuGroup: (cpu: Double, cpuTemp: Double, fan: FanInfo, coreUsages: [Double], loadAverages: (one: Double, five: Double, fifteen: Double), localIP: String) = {
                 let cpu = self.getCurrentCPU()
                 let smcBatch = readSMCStatsBatch()
                 let cpuTemp: Double
@@ -1009,7 +1015,9 @@ class SystemMonitor {
                 }
                 let fan = self.getCurrentFanInfo(smcFans: smcBatch.fans)
                 let coreUsages = self.getPerCoreCPUUsage()
-                return (cpu, cpuTemp, fan, coreUsages)
+                let loadAverages = self.getCPULoadAverages()
+                let localIP = self.getLocalIPAddress()
+                return (cpu, cpuTemp, fan, coreUsages, loadAverages, localIP)
             }()
 
             async let memDiskGroup: (memory: MemoryStats,
@@ -1037,7 +1045,7 @@ class SystemMonitor {
 
             async let sysInfo: SystemInfo = self.getCachedOrFreshSystemInfo()
 
-            let (cpu, cpuTemp, fan, coreUsages) = await cpuGroup
+            let (cpu, cpuTemp, fan, coreUsages, loadAverages, localIP) = await cpuGroup
             let memDisk = await memDiskGroup
             let net = await network
             let processList = await procs
@@ -1097,8 +1105,11 @@ class SystemMonitor {
                 }
                 if abs(self.diskUsage.free - memDisk.disk.free) > 100_000_000 { self.diskUsage = memDisk.disk }
                 if !coreUsages.isEmpty { self.cpuCoreUsages = coreUsages }
+                if abs(self.cpuLoadAverages.one - loadAverages.one) > 0.01 { self.cpuLoadAverages = loadAverages }
+                if self.localIPAddress != localIP { self.localIPAddress = localIP }
                 if abs(self.diskReadRate - memDisk.diskIO.readMBps) > 0.05 { self.diskReadRate = memDisk.diskIO.readMBps }
                 if abs(self.diskWriteRate - memDisk.diskIO.writeMBps) > 0.05 { self.diskWriteRate = memDisk.diskIO.writeMBps }
+                self.updateDiskIOHistory(read: memDisk.diskIO.readMBps, write: memDisk.diskIO.writeMBps)
                 self.networkUsage = net   // always assign — fluctuates every tick when active
                 self.topProcesses = processList.cpu
                 self.topMemoryProcesses = processList.memory
@@ -1180,15 +1191,24 @@ class SystemMonitor {
     private func updateNetworkHistory(upload: Double, download: Double) {
         uploadHistory.append(upload)
         downloadHistory.append(download)
-        
+        sessionBytesUploaded += upload * updateInterval
+        sessionBytesDownloaded += download * updateInterval
+
         // Keep only the last Constants.maxHistoryPoints values
         if uploadHistory.count > Constants.maxHistoryPoints {
             uploadHistory.removeFirst()
         }
-        
+
         if downloadHistory.count > Constants.maxHistoryPoints {
             downloadHistory.removeFirst()
         }
+    }
+
+    private func updateDiskIOHistory(read: Double, write: Double) {
+        diskReadHistory.append(read)
+        diskWriteHistory.append(write)
+        if diskReadHistory.count > Constants.maxHistoryPoints { diskReadHistory.removeFirst() }
+        if diskWriteHistory.count > Constants.maxHistoryPoints { diskWriteHistory.removeFirst() }
     }
     
     // MARK: - Data Collection Methods
@@ -1263,6 +1283,43 @@ class SystemMonitor {
         }
         previousCoreData = current
         return usages
+    }
+
+    private func getCPULoadAverages() -> (one: Double, five: Double, fifteen: Double) {
+        var loads: [Double] = [0, 0, 0]
+        getloadavg(&loads, 3)
+        return (one: loads[0], five: loads[1], fifteen: loads[2])
+    }
+
+    private func getLocalIPAddress() -> String {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0 else { return "" }
+        defer { freeifaddrs(ifaddr) }
+
+        let preferred = preferences?.selectedNetworkInterface
+        var fallback = ""
+
+        var ptr = ifaddr
+        while let current = ptr {
+            let ifa = current.pointee
+            let name = String(cString: ifa.ifa_name)
+            if ifa.ifa_addr?.pointee.sa_family == UInt8(AF_INET),
+               !name.hasPrefix("lo"),
+               let sa = ifa.ifa_addr {
+                var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                if getnameinfo(sa, socklen_t(MemoryLayout<sockaddr_in>.size),
+                               &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
+                    let ip = String(cString: hostname)
+                    guard ip != "127.0.0.1" else { ptr = ifa.ifa_next; continue }
+                    if let pref = preferred, pref != "All", pref != "Combined", name == pref {
+                        return ip
+                    }
+                    if fallback.isEmpty { fallback = ip }
+                }
+            }
+            ptr = ifa.ifa_next
+        }
+        return fallback
     }
 
     private func getDiskIORate() -> (readMBps: Double, writeMBps: Double) {

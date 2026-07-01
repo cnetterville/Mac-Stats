@@ -123,6 +123,10 @@ struct CardBasedStatsView: View {
                     GlassInfoRowView(label: "macOS", value: systemMonitor.systemInfo.macOSVersion)
                     GlassInfoRowView(label: "Uptime", value: formatUptime(systemMonitor.systemInfo.uptime))
                     GlassInfoRowView(label: "Boot Time", value: formatBootTime(systemMonitor.systemInfo.bootTime))
+                    if systemMonitor.processCount > 0 {
+                        GlassInfoRowView(label: "Processes", value: "\(systemMonitor.processCount)")
+                        GlassInfoRowView(label: "Threads", value: "\(systemMonitor.threadCount)")
+                    }
                 }
             }
         }
@@ -227,7 +231,41 @@ struct CardBasedStatsView: View {
                             .frame(height: 35)
                         }
                     }
-                    
+
+                    // Load Averages
+                    if systemMonitor.cpuLoadAverages.one > 0 {
+                        Divider().opacity(0.5)
+                        HStack {
+                            Image(systemName: "chart.bar.fill")
+                                .foregroundColor(.orange)
+                                .font(.caption)
+                                .glassTextVibrancy()
+                            Text("Load Average")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .glassTextVibrancy()
+                            Spacer()
+                            HStack(spacing: 12) {
+                                ForEach([
+                                    (systemMonitor.cpuLoadAverages.one, "1m"),
+                                    (systemMonitor.cpuLoadAverages.five, "5m"),
+                                    (systemMonitor.cpuLoadAverages.fifteen, "15m")
+                                ], id: \.1) { value, label in
+                                    VStack(alignment: .center, spacing: 1) {
+                                        Text(String(format: "%.2f", value))
+                                            .font(.caption)
+                                            .monospacedDigit()
+                                            .glassTextVibrancy()
+                                        Text(label)
+                                            .font(.system(size: 8))
+                                            .foregroundColor(.secondary)
+                                            .glassTextVibrancy()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Per-core CPU breakdown
                     if !systemMonitor.cpuCoreUsages.isEmpty {
                         Divider().opacity(0.5)
@@ -582,6 +620,42 @@ struct CardBasedStatsView: View {
                         }
                     }
                     
+                    // Memory composition breakdown (App / Wired / Compressed / Cached)
+                    if systemMonitor.memoryComposition.app > 0 {
+                        Divider().opacity(0.5)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: "square.3.layers.3d")
+                                    .foregroundColor(.blue).font(.caption).glassTextVibrancy()
+                                Text("Breakdown")
+                                    .font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+                            }
+                            memoryBreakdownRow(label: "App", value: systemMonitor.memoryComposition.app, color: .blue)
+                            memoryBreakdownRow(label: "Wired", value: systemMonitor.memoryComposition.wired, color: .orange)
+                            memoryBreakdownRow(label: "Compressed", value: systemMonitor.memoryComposition.compressed, color: .purple)
+                            memoryBreakdownRow(label: "Cached", value: systemMonitor.memoryComposition.cached, color: .green)
+                        }
+                    }
+
+                    // Swap usage
+                    if systemMonitor.swapUsage.total > 0 {
+                        Divider().opacity(0.5)
+                        HStack {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.left.arrow.right")
+                                    .foregroundColor(.purple).font(.caption).glassTextVibrancy()
+                                Text("Swap").font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+                            }
+                            Spacer()
+                            Text(String(format: "%.1f / %.1f GB",
+                                        systemMonitor.swapUsage.used,
+                                        systemMonitor.swapUsage.total))
+                                .font(.caption).monospacedDigit()
+                                .foregroundColor(systemMonitor.swapUsage.used > 0 ? .orange : .secondary)
+                                .glassTextVibrancy()
+                        }
+                    }
+
                     if systemMonitor.memoryTemperature > 0 {
                         InfoRowView(
                             label: "RAM Temp",
@@ -839,6 +913,26 @@ struct CardBasedStatsView: View {
                 }
             }
             
+            if !systemMonitor.localIPAddress.isEmpty {
+                Divider().opacity(0.5)
+                HStack {
+                    Image(systemName: "network")
+                        .foregroundColor(.blue)
+                        .font(.subheadline)
+                        .glassTextVibrancy()
+                    Text("Local IP")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .glassTextVibrancy()
+                    Spacer()
+                    Text(systemMonitor.localIPAddress)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                        .glassTextVibrancy()
+                }
+            }
+
             if !externalIPManager.externalIP.isEmpty {
                 Divider()
                     .opacity(0.5)
@@ -1193,11 +1287,55 @@ struct CardBasedStatsView: View {
                             Text(String(format: "%.1f MB/s", systemMonitor.diskWriteRate)).font(.caption).monospacedDigit().foregroundColor(.orange).glassTextVibrancy()
                         }
                     }
+
+                    // Top Disk I/O Processes
+                    if !systemMonitor.topDiskProcesses.isEmpty {
+                        Divider().opacity(0.5)
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "list.bullet")
+                                    .foregroundColor(.purple).font(.caption).glassTextVibrancy()
+                                Text("Top Disk I/O")
+                                    .font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+                                Spacer()
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(systemMonitor.topDiskProcesses.prefix(5)) { proc in
+                                    diskProcessRowView(proc: proc)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
-    
+
+    private func diskProcessRowView(proc: ProcessDiskInfo) -> some View {
+        HStack {
+            HStack(spacing: 6) {
+                Image(systemName: getProcessIcon(for: proc.name))
+                    .foregroundColor(getProcessIconColor(for: proc.name))
+                    .font(.caption).frame(width: 12).glassTextVibrancy()
+                Text(proc.name)
+                    .font(.caption).lineLimit(1).truncationMode(.tail).glassTextVibrancy()
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                if proc.bytesRead > 0 {
+                    Text(String(format: "R: %.1f MB/s", proc.bytesRead / 1_000_000))
+                        .font(.caption2).monospacedDigit().foregroundColor(.mint).glassTextVibrancy()
+                }
+                if proc.bytesWritten > 0 {
+                    Text(String(format: "W: %.1f MB/s", proc.bytesWritten / 1_000_000))
+                        .font(.caption2).monospacedDigit().foregroundColor(.orange).glassTextVibrancy()
+                }
+            }
+        }
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .liquidGlass(material: .ultraThin, cornerRadius: 6, shadowRadius: 2, shadowOpacity: 0.1)
+    }
+
     private func powerConsumptionCard() -> some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
@@ -1264,6 +1402,36 @@ struct CardBasedStatsView: View {
 
                         if systemMonitor.dcInPower > 0 {
                             InfoRowView(label: "Wall Power", value: String(format: "%.0f W", systemMonitor.dcInPower), valueColor: .green)
+                        }
+
+                        let adapter = systemMonitor.powerConsumptionInfo.adapterInfo
+                        if adapter.isConnected && adapter.wattage > 0 {
+                            Divider().opacity(0.5)
+                            HStack {
+                                Image(systemName: "powerplug.fill")
+                                    .foregroundColor(.green)
+                                    .font(.subheadline)
+                                    .glassTextVibrancy()
+                                Text("Adapter")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .glassTextVibrancy()
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 1) {
+                                    Text("\(adapter.wattage)W \(adapter.type)")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .glassTextVibrancy()
+                                    if adapter.model != "Unknown" && !adapter.model.isEmpty {
+                                        Text(adapter.model)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
+                                            .glassTextVibrancy()
+                                    }
+                                }
+                            }
                         }
 
                         if !systemMonitor.powerHistory.isEmpty {
@@ -1336,11 +1504,20 @@ struct CardBasedStatsView: View {
                     if systemMonitor.batteryInfo.health != "Unknown" {
                         InfoRowView(label: "Health", value: systemMonitor.batteryInfo.health)
                     }
+
+                    let battTemp = systemMonitor.batteryInfo.temperature
+                    if battTemp > 0 && battTemp < 100 {
+                        InfoRowView(
+                            label: "Temperature",
+                            value: TemperatureMonitor.formatTemperature(battTemp, unit: preferences.temperatureUnit, showBoth: false),
+                            valueColor: temperatureColor(for: battTemp)
+                        )
+                    }
                 }
             }
         }
     }
-    
+
     private func upsCard() -> some View {
         EnhancedCardView {
             VStack(alignment: .leading, spacing: 12) {
@@ -1472,11 +1649,18 @@ struct CardBasedStatsView: View {
                         }
                         
                         InfoRowView(
-                            label: "Security", 
+                            label: "Security",
                             value: wifiManager.wifiInfo.securityType,
                             valueColor: getSecurityColor(for: wifiManager.wifiInfo.securityType)
                         )
-                        
+
+                        if wifiManager.wifiInfo.channel > 0 {
+                            InfoRowView(label: "Channel", value: "\(wifiManager.wifiInfo.channel)")
+                        }
+                        if !wifiManager.wifiInfo.band.isEmpty {
+                            InfoRowView(label: "Band", value: wifiManager.wifiInfo.band)
+                        }
+
                     } else if !wifiManager.wifiInfo.hasPermission {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -1557,6 +1741,19 @@ struct CardBasedStatsView: View {
         }
     }
     
+    @ViewBuilder
+    private func memoryBreakdownRow(label: String, value: Double, color: Color) -> some View {
+        HStack {
+            HStack(spacing: 4) {
+                Circle().fill(color).frame(width: 6, height: 6).glassTextVibrancy()
+                Text(label).font(.caption).foregroundColor(.secondary).glassTextVibrancy()
+            }
+            Spacer()
+            Text(String(format: "%.1f GB", value))
+                .font(.caption).monospacedDigit().foregroundColor(color).glassTextVibrancy()
+        }
+    }
+
     private func enhancedGlassProcessRowView(process: SystemProcessInfo, isCPUView: Bool) -> some View {
         HStack {
             HStack(spacing: 6) {
