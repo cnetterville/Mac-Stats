@@ -1872,9 +1872,62 @@ struct DiskSectionView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 16)
+
+            // Time Machine Card
+            if systemMonitor.timeMachineInfo.isConfigured {
+                HStack(spacing: 12) {
+                    Image(systemName: systemMonitor.timeMachineInfo.isBackingUp
+                          ? "arrow.clockwise.circle.fill"
+                          : "clock.arrow.circlepath")
+                        .font(.system(size: 22))
+                        .foregroundStyle(
+                            systemMonitor.timeMachineInfo.isBackingUp
+                                ? Color.blue.gradient
+                                : Color.mint.gradient
+                        )
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Time Machine")
+                            .font(.system(size: 12, weight: .semibold))
+                        if systemMonitor.timeMachineInfo.isBackingUp {
+                            Text("Backing up…")
+                                .font(.system(size: 11))
+                                .foregroundColor(.blue)
+                        } else if let date = systemMonitor.timeMachineInfo.lastBackupDate {
+                            Text("Last backup: \(relativeBackupString(date))")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("No backups yet")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+            }
         }
     }
-    
+
+    private func relativeBackupString(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
     private func diskColor(_ percent: Double) -> Color {
         switch percent {
         case 0..<60: return .mint

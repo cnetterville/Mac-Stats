@@ -378,48 +378,49 @@ class SystemMonitor {
     let didUpdate = PassthroughSubject<Void, Never>()
 
     // MARK: - Private Properties
-    private var previousUPSPowerState: Bool = false
-    private var lastUPSPowerNotificationTime: Date?
-    private var smoothedFanSpeeds: [Double] = []   // EMA-smoothed fan RPMs
-    private var timer: Timer?
-    private var powerTimer: Timer?
-    private var updateInterval: TimeInterval = Constants.defaultUpdateInterval
-    private var powerUpdateInterval: TimeInterval = Constants.defaultPowerUpdateInterval
-    private var previousInterfaceStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
-    private var lastUpdateTime: Date = Date()
-    private var externalIPRefreshTimer: Timer?
-    private var previousCPUInfo = host_cpu_load_info()
-    private var activeNetworkInterfaces: [String] = []
-    private var hasBondedInterfaces: Bool = false // Track if we have a bonded configuration
-    private var cachedSystemInfo: SystemInfo?
-    private var lastSystemInfoUpdate: Date = Date.distantPast
-    private var networkProcessUpdateCounter: Int = 0
-    private var cachedNetworkProcesses: [ProcessNetworkInfo] = []
-    private var diskProcessUpdateCounter: Int = 0
-    private var cachedDiskProcesses: [ProcessDiskInfo] = []
-    private var previousDiskIO: [Int32: (read: UInt64, written: UInt64, time: Date)] = [:]
-    private var previousDiskIOStats: (read: UInt64, written: UInt64, time: Date)?
-    private var previousCoreData: [Int32] = []
-    private var cachedNettopPath: String? = nil  // resolved once; avoids repeated FileManager lookups
-    
-    // Add caching for power consumption to reduce macmon calls
-    private var cachedPowerConsumption: PowerConsumptionInfo?
-    private var lastPowerConsumptionUpdate: Date = Date.distantPast
-    private var isFetchingPowerConsumption: Bool = false
-    private var previousProcessCPUTimes: [pid_t: (user: UInt64, system: UInt64, time: Date)] = [:]
+    // These are all internal bookkeeping values — none drive UI directly, and many
+    // are mutated from background DispatchQueue threads. @ObservationIgnored prevents
+    // the @Observable macro from wrapping their setters in withMutation(), which is
+    // not thread-safe and causes EXC_BREAKPOINT heap corruption from background threads.
+    @ObservationIgnored private var previousUPSPowerState: Bool = false
+    @ObservationIgnored private var lastUPSPowerNotificationTime: Date?
+    @ObservationIgnored private var smoothedFanSpeeds: [Double] = []
+    @ObservationIgnored private var timer: Timer?
+    @ObservationIgnored private var powerTimer: Timer?
+    @ObservationIgnored private var updateInterval: TimeInterval = Constants.defaultUpdateInterval
+    @ObservationIgnored private var powerUpdateInterval: TimeInterval = Constants.defaultPowerUpdateInterval
+    @ObservationIgnored private var previousInterfaceStats: [String: (bytesIn: UInt64, bytesOut: UInt64)] = [:]
+    @ObservationIgnored private var lastUpdateTime: Date = Date()
+    @ObservationIgnored private var externalIPRefreshTimer: Timer?
+    @ObservationIgnored private var previousCPUInfo = host_cpu_load_info()
+    @ObservationIgnored private var activeNetworkInterfaces: [String] = []
+    @ObservationIgnored private var hasBondedInterfaces: Bool = false
+    @ObservationIgnored private var cachedSystemInfo: SystemInfo?
+    @ObservationIgnored private var lastSystemInfoUpdate: Date = Date.distantPast
+    @ObservationIgnored private var networkProcessUpdateCounter: Int = 0
+    @ObservationIgnored private var cachedNetworkProcesses: [ProcessNetworkInfo] = []
+    @ObservationIgnored private var diskProcessUpdateCounter: Int = 0
+    @ObservationIgnored private var cachedDiskProcesses: [ProcessDiskInfo] = []
+    @ObservationIgnored private var previousDiskIO: [Int32: (read: UInt64, written: UInt64, time: Date)] = [:]
+    @ObservationIgnored private var previousDiskIOStats: (read: UInt64, written: UInt64, time: Date)?
+    @ObservationIgnored private var previousCoreData: [Int32] = []
+    @ObservationIgnored private var cachedNettopPath: String? = nil
+    @ObservationIgnored private var cachedPowerConsumption: PowerConsumptionInfo?
+    @ObservationIgnored private var lastPowerConsumptionUpdate: Date = Date.distantPast
+    @ObservationIgnored private var isFetchingPowerConsumption: Bool = false
+    @ObservationIgnored private var previousProcessCPUTimes: [pid_t: (user: UInt64, system: UInt64, time: Date)] = [:]
+    @ObservationIgnored private let processCPUTimesLock = NSLock()
     private static let machTimeToSeconds: Double = {
         var info = mach_timebase_info_data_t()
         mach_timebase_info(&info)
         return Double(info.numer) / Double(info.denom) / 1_000_000_000.0
     }()
-    private var cachedSPPowerOutput: (wattage: Int, type: String, model: String, isConnected: Bool)?
-    private var lastSPPowerUpdate: Date = Date.distantPast
-    private var activeViewerCount: Int = 0
-    /// Reference count of views currently displaying per-process network data.
-    /// When zero, the expensive `nettop` subprocess is skipped each tick.
-    private var activeNetworkProcessesViewerCount: Int = 0
-    private var powerSourceNotifySource: CFRunLoopSource?
-    private var timeMachineRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var cachedSPPowerOutput: (wattage: Int, type: String, model: String, isConnected: Bool)?
+    @ObservationIgnored private var lastSPPowerUpdate: Date = Date.distantPast
+    @ObservationIgnored private var activeViewerCount: Int = 0
+    @ObservationIgnored private var activeNetworkProcessesViewerCount: Int = 0
+    @ObservationIgnored private var powerSourceNotifySource: CFRunLoopSource?
+    @ObservationIgnored private var timeMachineRefreshTask: Task<Void, Never>?
 
     // Cache for battery details (system_profiler is slow — cache for 10 minutes)
     var cachedBatteryDetails: (cycleCount: Int, maxCapacity: Int)?
@@ -490,19 +491,89 @@ class SystemMonitor {
         let status = runTMUtil(["status"])
         let isBackingUp = status.stdout.contains("Running = 1")
 
+        // Fallback 1: parse LastBackupDate from `tmutil status` output.
+        // Format: LastBackupDate = "2025-07-01 01:00:15 +0000";
+        if lastBackupDate == nil {
+            let pattern = #"LastBackupDate\s*=\s*"([^"]+)""#
+            if let range = status.stdout.range(of: pattern, options: .regularExpression) {
+                let parts = String(status.stdout[range]).components(separatedBy: "\"")
+                if parts.count >= 2 {
+                    let fmt = DateFormatter()
+                    fmt.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+                    lastBackupDate = fmt.date(from: parts[1])
+                }
+            }
+        }
+
+        // Fallback 2: read the TM system plist, which caches the last backup date
+        // even when the backup destination is not currently mounted.
+        // /Library/Preferences/com.apple.TimeMachine.plist is world-readable.
+        if lastBackupDate == nil {
+            lastBackupDate = readTMPlistDate()
+        }
+
         #if DEBUG
         print("TM destinationinfo (exit \(dest.exitCode)): \(dest.stdout.prefix(80))")
         print("TM latestbackup (exit \(latest.exitCode)): \(latest.stdout.prefix(120))")
         if !latest.stderr.isEmpty { print("TM latestbackup stderr: \(latest.stderr)") }
+        print("TM lastBackupDate resolved: \(String(describing: lastBackupDate))")
         #endif
 
-        // Even if `latestbackup` failed (e.g. needs Full Disk Access), still
-        // report "configured" so the UI doesn't lie about TM being off.
         return TimeMachineInfo(
             isConfigured: isConfigured || lastBackupDate != nil,
             isBackingUp: isBackingUp,
             lastBackupDate: lastBackupDate
         )
+    }
+
+    private func readTMPlistDate() -> Date? {
+        // Direct file read fails with TCC "Operation not permitted" even though the
+        // plist is world-readable on disk. CFPreferencesCopyValue goes through
+        // cfprefsd which IS allowed to read /Library/Preferences/ without FDA.
+        let domain = "com.apple.TimeMachine" as CFString
+
+        // Primary: walk Destinations[*].SnapshotDates and return the most recent
+        // Date. The plist stores these as NSDate objects (binary type 5), so they
+        // bridge directly to Swift Date when read via CFPreferences.
+        if let dests = CFPreferencesCopyValue(
+            "Destinations" as CFString, domain,
+            kCFPreferencesAnyUser, kCFPreferencesAnyHost
+        ) as? [[String: Any]] {
+            var latest: Date? = nil
+            let strFmt = DateFormatter()
+            strFmt.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+            for dest in dests {
+                guard let snaps = dest["SnapshotDates"] as? [Any] else { continue }
+                for snap in snaps.reversed() {
+                    let d: Date?
+                    if let date = snap as? Date {
+                        d = date
+                    } else if let str = snap as? String {
+                        d = strFmt.date(from: str)
+                    } else {
+                        d = nil
+                    }
+                    if let d {
+                        if latest == nil || d > latest! { latest = d }
+                        break
+                    }
+                }
+            }
+            if let latest { return latest }
+        }
+
+        // Fallback: LastBackupActivity is a compact local-time string "yyyy-MM-dd-HHmmss".
+        if let raw = CFPreferencesCopyValue(
+            "LastBackupActivity" as CFString, domain,
+            kCFPreferencesAnyUser, kCFPreferencesAnyHost
+        ) as? String {
+            let fmt = DateFormatter()
+            fmt.dateFormat = "yyyy-MM-dd-HHmmss"
+            fmt.timeZone = .current
+            if let date = fmt.date(from: raw) { return date }
+        }
+
+        return nil
     }
 
     private struct TMUtilResult {
@@ -1646,6 +1717,12 @@ class SystemMonitor {
         let totalMemory = Double(ProcessInfo.processInfo.physicalMemory)
         let taskInfoSize = Int32(MemoryLayout<proc_taskinfo>.size)
 
+        // Snapshot previous times under lock so concurrent calls from refreshAllData()
+        // and updateStats() don't race on the dictionary's backing storage.
+        processCPUTimesLock.lock()
+        let prevTimes = previousProcessCPUTimes
+        processCPUTimesLock.unlock()
+
         var cpuList: [SystemProcessInfo] = []
         var memList: [SystemProcessInfo] = []
         var newCPUTimes: [pid_t: (user: UInt64, system: UInt64, time: Date)] = [:]
@@ -1666,7 +1743,7 @@ class SystemMonitor {
 
             let memPct = totalMemory > 0 ? (Double(taskInfo.pti_resident_size) / totalMemory) * 100.0 : 0.0
             var cpuPct = 0.0
-            if let prev = previousProcessCPUTimes[pid] {
+            if let prev = prevTimes[pid] {
                 let elapsed = now.timeIntervalSince(prev.time)
                 if elapsed > 0.1 {
                     let userDelta = userTime >= prev.user ? userTime - prev.user : 0
@@ -1686,7 +1763,9 @@ class SystemMonitor {
             if memPct > Constants.minMemoryUsageFilter { memList.append(info) }
         }
 
+        processCPUTimesLock.lock()
         previousProcessCPUTimes = newCPUTimes
+        processCPUTimesLock.unlock()
         return (
             cpu: Array(cpuList.sorted { $0.cpuUsage > $1.cpuUsage }.prefix(count)),
             memory: Array(memList.sorted { $0.memoryUsage > $1.memoryUsage }.prefix(count)),
