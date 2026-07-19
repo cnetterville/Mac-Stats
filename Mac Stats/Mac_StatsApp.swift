@@ -120,62 +120,56 @@ struct MenuBarDropdownView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
-    @AppStorage("lastMenuTab") private var selectedTab: MonitorTab = .cpu
+    @AppStorage("lastMenuTab") private var selectedTab: MonitorTab = .overview
 
     enum MonitorTab: String, CaseIterable {
+        case overview = "Overview"
         case cpu = "CPU"
         case memory = "Memory"
         case network = "Network"
         case disk = "Disk"
         case power = "Power"
+        case battery = "Battery"
 
         var icon: String {
             switch self {
-            case .cpu:     return "cpu.fill"
-            case .memory:  return "memorychip.fill"
-            case .network: return "antenna.radiowaves.left.and.right"
-            case .disk:    return "internaldrive.fill"
-            case .power:   return "bolt.fill"
+            case .overview: return "square.grid.2x2.fill"
+            case .cpu:      return "cpu.fill"
+            case .memory:   return "memorychip.fill"
+            case .network:  return "antenna.radiowaves.left.and.right"
+            case .disk:     return "internaldrive.fill"
+            case .power:    return "bolt.fill"
+            case .battery:  return "battery.100"
             }
         }
 
         var color: Color {
             switch self {
-            case .cpu:     return .blue
-            case .memory:  return .purple
-            case .network: return .green
-            case .disk:    return .mint
-            case .power:   return .yellow
+            case .overview: return .primary
+            case .cpu:      return .blue
+            case .memory:   return .purple
+            case .network:  return .green
+            case .disk:     return .mint
+            case .power:    return .yellow
+            case .battery:  return .green
             }
         }
 
         var shortLabel: String {
             switch self {
-            case .cpu:     return "CPU"
-            case .memory:  return "Mem"
-            case .network: return "Net"
-            case .disk:    return "Disk"
-            case .power:   return "Power"
+            case .overview: return "All"
+            case .cpu:      return "CPU"
+            case .memory:   return "Mem"
+            case .network:  return "Net"
+            case .disk:     return "Disk"
+            case .power:    return "Power"
+            case .battery:  return "Batt"
             }
         }
     }
 
-    // MARK: - Computed stats for the mini-strip
-
-    private var memPercent: Double {
-        guard systemMonitor.memoryUsage.total > 0 else { return 0 }
-        return (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100
-    }
-
-    private var downloadMbps: Double {
-        (systemMonitor.networkUsage.download * 8) / 1_000_000
-    }
-
-    private var miniSpeedString: String {
-        if downloadMbps >= 1000 { return String(format: "%.1fG↓", downloadMbps / 1000) }
-        if downloadMbps >= 10   { return String(format: "%.0fM↓", downloadMbps) }
-        if downloadMbps >= 0.1  { return String(format: "%.1fM↓", downloadMbps) }
-        return "0↓"
+    private var visibleTabs: [MonitorTab] {
+        MonitorTab.allCases.filter { $0 != .battery || systemMonitor.batteryInfo.present }
     }
 
     // MARK: - Body
@@ -184,68 +178,122 @@ struct MenuBarDropdownView: View {
         VStack(spacing: 0) {
             // Header
             VStack(spacing: 8) {
-                // Custom icon tab bar
-                HStack(spacing: 2) {
-                    ForEach(MonitorTab.allCases, id: \.self) { tab in
+                // Tab bar + action buttons row
+                HStack(spacing: 0) {
+                    HStack(spacing: 2) {
+                        ForEach(visibleTabs, id: \.self) { tab in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    selectedTab = tab
+                                }
+                            } label: {
+                                VStack(spacing: 3) {
+                                    Image(systemName: tab.icon)
+                                        .font(.system(size: 12, weight: .medium))
+                                    Text(tab.shortLabel)
+                                        .font(.system(size: 9, weight: selectedTab == tab ? .semibold : .regular))
+                                }
+                                .foregroundColor(selectedTab == tab ? tab.color : .secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .fill(selectedTab == tab ? tab.color.opacity(0.15) : Color.clear)
+                                        .animation(.easeInOut(duration: 0.18), value: selectedTab)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 6) {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                selectedTab = tab
-                            }
+                            openWindow(id: "main")
+                            dismissMenu()
                         } label: {
-                            VStack(spacing: 3) {
-                                Image(systemName: tab.icon)
-                                    .font(.system(size: 14, weight: .medium))
-                                Text(tab.shortLabel)
-                                    .font(.system(size: 9, weight: selectedTab == tab ? .semibold : .regular))
-                            }
-                            .foregroundColor(selectedTab == tab ? tab.color : .secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 7)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(selectedTab == tab ? tab.color.opacity(0.15) : Color.clear)
-                                    .animation(.easeInOut(duration: 0.18), value: selectedTab)
-                            )
+                            Image(systemName: "macwindow")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
                         }
                         .buttonStyle(.plain)
+                        .help("Open Main Window")
+
+                        Button {
+                            openWindow(id: "settings")
+                            dismissMenu()
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Open Settings")
+
+                        Menu {
+                            Button(role: .destructive, action: { NSApplication.shared.terminate(nil) }) {
+                                Label("Quit Mac Stats", systemImage: "power")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("More")
                     }
                 }
 
-                // Live mini-stats strip + action buttons
-                HStack(spacing: 8) {
-                    miniStat(icon: "cpu.fill",        value: "\(Int(systemMonitor.cpuUsage))%",  color: .blue)
-                    miniStat(icon: "memorychip.fill",  value: "\(Int(memPercent))%",              color: .purple)
-                    miniStat(icon: "arrow.down",       value: miniSpeedString,                    color: .green)
-                    if systemMonitor.batteryInfo.present {
-                        let pct = systemMonitor.batteryInfo.chargeLevel
-                        miniStat(icon: systemMonitor.batteryInfo.isCharging ? "bolt.fill" : "battery.100",
-                                 value: "\(Int(pct))%",
-                                 color: pct < 20 ? .red : pct < 40 ? .orange : .green)
+                // System info strip — shows data not duplicated in any tab
+                HStack(spacing: 10) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Text(formatUptime(systemMonitor.systemInfo.uptime))
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundColor(.primary.opacity(0.7))
+                    }
+
+                    if !systemMonitor.systemInfo.macOSVersion.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "apple.logo")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                            Text(systemMonitor.systemInfo.macOSVersion)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.primary.opacity(0.7))
+                                .lineLimit(1)
+                        }
                     }
 
                     Spacer()
 
-                    Button {
-                        openWindow(id: "main")
-                        dismissMenu()
-                    } label: {
-                        Image(systemName: "macwindow")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                    if systemMonitor.timeMachineInfo.isConfigured {
+                        HStack(spacing: 3) {
+                            Image(systemName: systemMonitor.timeMachineInfo.isBackingUp
+                                  ? "arrow.clockwise.circle.fill" : "clock.arrow.circlepath")
+                                .font(.system(size: 9))
+                                .foregroundColor(systemMonitor.timeMachineInfo.isBackingUp ? .blue : .secondary)
+                            Text(systemMonitor.timeMachineInfo.isBackingUp
+                                 ? "Backing up"
+                                 : tmShortString(systemMonitor.timeMachineInfo.lastBackupDate))
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.primary.opacity(0.7))
+                        }
+                    } else if systemMonitor.batteryInfo.present {
+                        let pct = systemMonitor.batteryInfo.chargeLevel
+                        HStack(spacing: 3) {
+                            Image(systemName: systemMonitor.batteryInfo.isCharging ? "bolt.fill" : "battery.100")
+                                .font(.system(size: 9))
+                                .foregroundColor(pct < 20 ? .red : pct < 40 ? .orange : .green)
+                            Text("\(Int(pct))%")
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(pct < 20 ? .red : pct < 40 ? .orange : .primary.opacity(0.7))
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help("Open Main Window")
-
-                    Button {
-                        openWindow(id: "settings")
-                        dismissMenu()
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Open Settings")
                 }
             }
             .padding(.horizontal, 12)
@@ -260,6 +308,9 @@ struct MenuBarDropdownView: View {
             ScrollView(.vertical, showsIndicators: true) {
                 Group {
                     switch selectedTab {
+                    case .overview:
+                        OverviewSectionView()
+                            .environment(systemMonitor)
                     case .cpu:
                         CPUSectionView(openWindow: openWindow)
                             .environment(systemMonitor)
@@ -275,42 +326,33 @@ struct MenuBarDropdownView: View {
                     case .power:
                         PowerSectionView()
                             .environment(systemMonitor)
+                    case .battery:
+                        BatterySectionView()
+                            .environment(systemMonitor)
                     }
                 }
                 .animation(.easeInOut(duration: 0.18), value: selectedTab)
             }
             .scrollBounceBehavior(.basedOnSize)
-
-            // Footer
-            Divider()
-            Button(action: { NSApplication.shared.terminate(nil) }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "power")
-                        .font(.system(size: 10))
-                    Text("Quit Mac Stats")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundColor(.secondary)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
         }
-        .frame(width: 320, height: 620)
+        .frame(width: 350, height: 620)
     }
 
     // MARK: - Helpers
 
-    @ViewBuilder
-    private func miniStat(icon: String, value: String, color: Color) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 9))
-                .foregroundColor(color.opacity(0.85))
-            Text(value)
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                .foregroundColor(.primary.opacity(0.8))
-        }
+    private func formatUptime(_ uptime: TimeInterval) -> String {
+        let t = Int(uptime)
+        let d = t / 86400; let h = (t % 86400) / 3600; let m = (t % 3600) / 60
+        if d > 0 { return "\(d)d \(h)h" }
+        if h > 0 { return String(format: "%dh %02dm", h, m) }
+        return "\(m)m"
+    }
+
+    private func tmShortString(_ date: Date?) -> String {
+        guard let date else { return "Never" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     private func dismissMenu() {
@@ -2937,6 +2979,432 @@ struct PowerSectionView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
         )
+    }
+
+    private func formatMinutes(_ minutes: Double) -> String {
+        let m = Int(minutes)
+        if m <= 0 { return "--" }
+        return m < 60 ? "\(m)m" : "\(m / 60)h \(m % 60)m"
+    }
+}
+
+// Overview Section - at-a-glance dashboard across all subsystems
+struct OverviewSectionView: View {
+    @Environment(SystemMonitor.self) private var systemMonitor
+    @EnvironmentObject var preferences: PreferencesManager
+
+    private var memPercent: Double {
+        guard systemMonitor.memoryUsage.total > 0 else { return 0 }
+        return (systemMonitor.memoryUsage.used / systemMonitor.memoryUsage.total) * 100
+    }
+
+    private var diskPercent: Double {
+        guard systemMonitor.diskUsage.total > 0 else { return 0 }
+        return ((systemMonitor.diskUsage.total - systemMonitor.diskUsage.free) / systemMonitor.diskUsage.total) * 100
+    }
+
+    private var totalWatts: Double {
+        systemMonitor.dcInPower > 0 ? systemMonitor.dcInPower : systemMonitor.powerConsumptionInfo.totalSystemPower
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // System identity card
+            HStack(spacing: 12) {
+                Image(systemName: "desktopcomputer")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color.blue.gradient)
+                    .frame(width: 32)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(systemMonitor.systemInfo.modelName.isEmpty ? "Mac" : systemMonitor.systemInfo.modelName)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Text(systemMonitor.systemInfo.chipInfo.isEmpty ? "Loading..." : systemMonitor.systemInfo.chipInfo)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(systemMonitor.systemInfo.macOSVersion)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                    HStack(spacing: 3) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                        Text(formatUptime(systemMonitor.systemInfo.uptime))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(cardBackground)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+
+            // Metrics grid — 3 columns, dynamic colors
+            let battery = systemMonitor.batteryInfo
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                overviewMetric(icon: "cpu.fill", label: "CPU",
+                               value: "\(Int(systemMonitor.cpuUsage))%",
+                               color: cpuColor(systemMonitor.cpuUsage))
+                overviewMetric(icon: "memorychip.fill", label: "Memory",
+                               value: "\(Int(memPercent))%",
+                               color: memColor(memPercent))
+                overviewMetric(icon: "internaldrive.fill", label: "Disk",
+                               value: "\(Int(diskPercent))%",
+                               color: diskColor(diskPercent))
+                overviewMetric(icon: "arrow.down", label: "Download",
+                               value: downloadString(),
+                               color: .green)
+                overviewMetric(icon: "bolt.fill", label: "Power",
+                               value: "\(Int(totalWatts))W",
+                               color: systemMonitor.thermalProfile.powerColor(totalWatts))
+                if battery.present {
+                    let pct = battery.chargeLevel
+                    overviewMetric(icon: battery.isCharging ? "bolt.fill" : "battery.100",
+                                   label: "Battery",
+                                   value: "\(Int(pct))%",
+                                   color: pct < 20 ? .red : pct < 40 ? .orange : .green)
+                } else {
+                    overviewMetric(icon: "thermometer.medium", label: "CPU Temp",
+                                   value: formatTemp(systemMonitor.cpuTemperature),
+                                   color: systemMonitor.thermalProfile.temperatureColor(systemMonitor.cpuTemperature))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
+            // Time Machine card (if configured)
+            if systemMonitor.timeMachineInfo.isConfigured {
+                HStack(spacing: 12) {
+                    Image(systemName: systemMonitor.timeMachineInfo.isBackingUp
+                          ? "arrow.clockwise.circle.fill" : "clock.arrow.circlepath")
+                        .font(.system(size: 20))
+                        .foregroundStyle(systemMonitor.timeMachineInfo.isBackingUp
+                            ? Color.blue.gradient : Color.mint.gradient)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Time Machine")
+                            .font(.system(size: 11, weight: .semibold))
+                        if systemMonitor.timeMachineInfo.isBackingUp {
+                            Text("Backing up…")
+                                .font(.system(size: 10))
+                                .foregroundColor(.blue)
+                        } else if let date = systemMonitor.timeMachineInfo.lastBackupDate {
+                            Text("Last backup: \(relativeString(date))")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("No backups yet")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(cardBackground)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            // Top processes summary
+            if !systemMonitor.topProcesses.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Top Processes")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if systemMonitor.processCount > 0 {
+                            Text("\(systemMonitor.processCount) total")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary.opacity(0.7))
+                        }
+                    }
+                    ForEach(Array(systemMonitor.topProcesses.prefix(3).enumerated()), id: \.element.id) { index, process in
+                        ProcessRowView(process: process, rank: index + 1)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(cardBackground)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            Spacer().frame(height: 16)
+        }
+    }
+
+    @ViewBuilder
+    private func overviewMetric(icon: String, label: String, value: String, color: Color) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundStyle(color.gradient)
+            Text(value)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(color)
+                .minimumScaleFactor(0.8)
+                .lineLimit(1)
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(cardBackground)
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(.thinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+    }
+
+    private func formatUptime(_ uptime: TimeInterval) -> String {
+        let t = Int(uptime)
+        let d = t / 86400; let h = (t % 86400) / 3600; let m = (t % 3600) / 60
+        if d > 0 { return "\(d)d \(h)h" }
+        if h > 0 { return String(format: "%dh %02dm", h, m) }
+        return "\(m)m"
+    }
+
+    private func downloadString() -> String {
+        let mbps = (systemMonitor.networkUsage.download * 8) / 1_000_000
+        if mbps >= 1000 { return String(format: "%.1fG", mbps / 1000) }
+        if mbps >= 1    { return String(format: "%.0fM", mbps) }
+        return String(format: "%.0fK", mbps * 1000)
+    }
+
+    private func relativeString(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    private func formatTemp(_ celsius: Double) -> String {
+        preferences.temperatureUnit == .fahrenheit
+            ? String(format: "%.0f°F", TemperatureMonitor.celsiusToFahrenheit(celsius))
+            : String(format: "%.0f°C", celsius)
+    }
+
+    private func cpuColor(_ usage: Double) -> Color {
+        switch usage {
+        case 0..<30: return .green
+        case 30..<60: return .blue
+        case 60..<80: return .orange
+        default: return .red
+        }
+    }
+
+    private func memColor(_ pct: Double) -> Color {
+        switch pct {
+        case 0..<50: return .green
+        case 50..<70: return .blue
+        case 70..<85: return .orange
+        default: return .red
+        }
+    }
+
+    private func diskColor(_ pct: Double) -> Color {
+        switch pct {
+        case 0..<60: return .mint
+        case 60..<80: return .orange
+        default: return .red
+        }
+    }
+}
+
+// Battery Section - dedicated tab for laptops
+struct BatterySectionView: View {
+    @Environment(SystemMonitor.self) private var systemMonitor
+    @EnvironmentObject var preferences: PreferencesManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            let battery = systemMonitor.batteryInfo
+
+            // Charge card
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: batteryIcon(battery.chargeLevel, charging: battery.isCharging))
+                        .font(.system(size: 14))
+                        .foregroundColor(batteryColor(battery.chargeLevel))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Battery")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(battery.isCharging ? "Charging" : (battery.isPluggedIn ? "Plugged In" : "On Battery"))
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Text(String(format: "%.0f%%", battery.chargeLevel))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundColor(batteryColor(battery.chargeLevel))
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+
+                ProgressView(value: battery.chargeLevel, total: 100)
+                    .tint(batteryColor(battery.chargeLevel))
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+
+                if battery.timeRemaining != 0 {
+                    HStack {
+                        Text(battery.isCharging ? "Time to Full" : "Time Remaining")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(battery.timeRemaining < 0 ? "Calculating…" : formatMinutes(battery.timeRemaining))
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+                }
+            }
+            .background(cardBackground)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+
+            // Health & stats grid
+            let hasExtraStats = battery.cycleCount > 0
+                || (battery.maxCapacity > 0 && battery.maxCapacity <= 100)
+                || battery.temperature > 0
+                || (battery.amperage != 0 && battery.voltage > 0)
+            if hasExtraStats {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    if battery.cycleCount > 0 {
+                        batteryStat(label: "Cycles", value: "\(battery.cycleCount)",
+                                    icon: "arrow.triangle.2.circlepath", color: .blue)
+                    }
+                    if battery.maxCapacity > 0 && battery.maxCapacity <= 100 {
+                        batteryStat(label: "Health", value: "\(battery.maxCapacity)%",
+                                    icon: "heart.fill", color: healthColor(battery.maxCapacity))
+                    }
+                    if battery.temperature > 0 {
+                        batteryStat(label: "Temp", value: formatTemp(battery.temperature),
+                                    icon: "thermometer.medium",
+                                    color: systemMonitor.thermalProfile.temperatureColor(battery.temperature))
+                    }
+                    if battery.amperage != 0 && battery.voltage > 0 {
+                        let watts = abs(battery.amperage / 1000.0 * battery.voltage / 1000.0)
+                        let charging = battery.amperage > 0
+                        batteryStat(label: charging ? "Charge Rate" : "Discharge",
+                                    value: String(format: "%.1f W", watts),
+                                    icon: charging ? "bolt.fill" : "minus.plus.batteryblock",
+                                    color: charging ? .green : .orange)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            // Adapter card
+            let adapter = systemMonitor.powerConsumptionInfo.adapterInfo
+            if adapter.isConnected && adapter.wattage > 0 {
+                HStack(spacing: 12) {
+                    Image(systemName: "powerplug.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.green.gradient)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Power Adapter")
+                            .font(.system(size: 11, weight: .semibold))
+                        let label = adapter.model.isEmpty || adapter.model == "Unknown"
+                            ? "\(adapter.wattage)W \(adapter.type)"
+                            : adapter.model
+                        Text(label)
+                            .font(.system(size: 9))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text("\(adapter.wattage)W")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(.green)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(cardBackground)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            Spacer().frame(height: 16)
+        }
+    }
+
+    @ViewBuilder
+    private func batteryStat(label: String, value: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(color.gradient)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text(value)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.primary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8)
+            .fill(Color(NSColor.controlBackgroundColor).opacity(0.5)))
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 12)
+            .fill(.thinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+    }
+
+    private func batteryIcon(_ pct: Double, charging: Bool) -> String {
+        if charging { return "battery.100.bolt" }
+        switch pct {
+        case 0..<12.5:    return "battery.0"
+        case 12.5..<37.5: return "battery.25"
+        case 37.5..<62.5: return "battery.50"
+        case 62.5..<87.5: return "battery.75"
+        default:          return "battery.100"
+        }
+    }
+
+    private func batteryColor(_ pct: Double) -> Color {
+        switch pct {
+        case 0..<20: return .red
+        case 20..<40: return .orange
+        default: return .green
+        }
+    }
+
+    private func healthColor(_ pct: Int) -> Color {
+        switch pct {
+        case 80...: return .green
+        case 60..<80: return .yellow
+        default: return .orange
+        }
+    }
+
+    private func formatTemp(_ celsius: Double) -> String {
+        preferences.temperatureUnit == .fahrenheit
+            ? String(format: "%.0f°F", TemperatureMonitor.celsiusToFahrenheit(celsius))
+            : String(format: "%.0f°C", celsius)
     }
 
     private func formatMinutes(_ minutes: Double) -> String {
