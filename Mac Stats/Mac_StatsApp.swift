@@ -124,6 +124,7 @@ struct MenuBarDropdownView: View {
     @State private var performanceExtras = PerformanceExtrasMonitor()
     @State private var storageExtras = StorageExtrasMonitor()
     @State private var bluetoothBatteries = BluetoothBatteryMonitor()
+    @State private var systemDetails = SystemDetailsMonitor()
 
     enum MonitorTab: String, CaseIterable {
         case overview = "Overview"
@@ -312,7 +313,7 @@ struct MenuBarDropdownView: View {
                 Group {
                     switch selectedTab {
                     case .overview:
-                        OverviewSectionView()
+                        OverviewSectionView(systemDetails: systemDetails)
                             .environment(systemMonitor)
                     case .cpu:
                         CPUSectionView(openWindow: openWindow, extras: performanceExtras)
@@ -3423,6 +3424,7 @@ struct PowerSectionView: View {
 struct OverviewSectionView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
+    let systemDetails: SystemDetailsMonitor
 
     private var memPercent: Double {
         guard systemMonitor.memoryUsage.total > 0 else { return 0 }
@@ -3572,8 +3574,72 @@ struct OverviewSectionView: View {
                 .padding(.top, 12)
             }
 
+            // System details — hostname, serial, build, displays
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text("System")
+                        .font(.system(size: 12, weight: .semibold))
+                    Spacer()
+                }
+
+                HStack {
+                    Text("Hostname")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(systemDetails.hostname.isEmpty ? "Loading..." : systemDetails.hostname)
+                        .font(.system(size: 10, weight: .medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                HStack {
+                    Text("Serial Number")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(systemDetails.serialNumber.isEmpty ? "Loading..." : systemDetails.serialNumber)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                }
+                HStack {
+                    Text("Build")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(systemDetails.buildNumber.isEmpty ? "Loading..." : systemDetails.buildNumber)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                }
+
+                if !systemDetails.displays.isEmpty {
+                    Divider().opacity(0.3)
+                    ForEach(systemDetails.displays) { display in
+                        HStack {
+                            Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                            Text(display.name)
+                                .font(.system(size: 10))
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(display.widthPx)×\(display.heightPx) @ \(Int(display.refreshRateHz.rounded()))Hz")
+                                .font(.system(size: 9, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
+            .background(cardBackground)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+
             Spacer().frame(height: 16)
         }
+        .onAppear { systemDetails.start() }
+        .onDisappear { systemDetails.stop() }
     }
 
     @ViewBuilder

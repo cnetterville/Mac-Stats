@@ -57,6 +57,7 @@ struct TabbedStatsView: View {
     @State private var selectedCategory: StatsCategory = .overview
     @State private var performanceExtras = PerformanceExtrasMonitor()
     @State private var storageExtras = StorageExtrasMonitor()
+    @State private var systemDetails = SystemDetailsMonitor()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -565,8 +566,57 @@ struct TabbedStatsView: View {
     private var systemContent: some View {
         VStack(spacing: 12) {
             fullSystemInfoCard
+            displaysCard
             temperatureCard
             systemResourcesCard
+        }
+        .onAppear { systemDetails.start() }
+        .onDisappear { systemDetails.stop() }
+    }
+
+    private var displaysCard: some View {
+        EnhancedCardView {
+            VStack(alignment: .leading, spacing: 12) {
+                EnhancedCardHeaderView(title: "Displays", icon: "display", color: .blue)
+
+                if !systemDetails.displays.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(systemDetails.displays) { display in
+                            HStack {
+                                Image(systemName: display.isBuiltIn ? "laptopcomputer" : "display")
+                                    .foregroundColor(.blue)
+                                    .font(.subheadline)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(display.name)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                        if display.isMain {
+                                            Text("Main")
+                                                .font(.caption2)
+                                                .foregroundColor(.blue)
+                                                .padding(.horizontal, 5)
+                                                .padding(.vertical, 1)
+                                                .background(
+                                                    Capsule().fill(Color.blue.opacity(0.15))
+                                                )
+                                        }
+                                    }
+                                    Text("\(display.widthPx) × \(display.heightPx) @ \(Int(display.refreshRateHz.rounded()))Hz")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                Spacer()
+                            }
+                        }
+                    }
+                } else {
+                    Text(systemDetails.hasSampled ? "No displays detected" : "Loading...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 4)
+                }
+            }
         }
     }
     
@@ -1188,6 +1238,12 @@ struct TabbedStatsView: View {
 					
                     let totalPhysicalMemory = Double(ProcessInfo.processInfo.physicalMemory) / (1000 * 1000 * 1000)
                     GlassInfoRowView(label: "Physical Memory", value: String(format: "%.0f GB", totalPhysicalMemory))
+                    GlassInfoRowView(label: "Build",
+                                     value: systemDetails.buildNumber.isEmpty ? "Loading..." : systemDetails.buildNumber)
+                    GlassInfoRowView(label: "Hostname",
+                                     value: systemDetails.hostname.isEmpty ? "Loading..." : systemDetails.hostname)
+                    GlassInfoRowView(label: "Serial Number",
+                                     value: systemDetails.serialNumber.isEmpty ? "Loading..." : systemDetails.serialNumber)
                     GlassInfoRowView(label: "Time Machine",
                                      value: timeMachineStatusText,
                                      valueColor: timeMachineStatusColor)
