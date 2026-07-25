@@ -121,6 +121,9 @@ struct MenuBarDropdownView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     @AppStorage("lastMenuTab") private var selectedTab: MonitorTab = .overview
+    @State private var performanceExtras = PerformanceExtrasMonitor()
+    @State private var storageExtras = StorageExtrasMonitor()
+    @State private var bluetoothBatteries = BluetoothBatteryMonitor()
 
     enum MonitorTab: String, CaseIterable {
         case overview = "Overview"
@@ -312,7 +315,7 @@ struct MenuBarDropdownView: View {
                         OverviewSectionView()
                             .environment(systemMonitor)
                     case .cpu:
-                        CPUSectionView(openWindow: openWindow)
+                        CPUSectionView(openWindow: openWindow, extras: performanceExtras)
                             .environment(systemMonitor)
                     case .memory:
                         MemorySectionView(openWindow: openWindow)
@@ -321,10 +324,10 @@ struct MenuBarDropdownView: View {
                         NetworkSectionView(openWindow: openWindow)
                             .environment(systemMonitor)
                     case .disk:
-                        DiskSectionView()
+                        DiskSectionView(extras: storageExtras)
                             .environment(systemMonitor)
                     case .power:
-                        PowerSectionView()
+                        PowerSectionView(extras: performanceExtras, bluetooth: bluetoothBatteries)
                             .environment(systemMonitor)
                     case .battery:
                         BatterySectionView()
@@ -367,7 +370,8 @@ struct CPUSectionView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
     let openWindow: OpenWindowAction
-    
+    let extras: PerformanceExtrasMonitor
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Main CPU Usage Card
@@ -533,6 +537,78 @@ struct CPUSectionView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                 }
+
+                // Cluster frequency (Apple Silicon only)
+                if extras.frequencySupported, let freq = extras.clusterFrequency {
+                    Divider().opacity(0.3).padding(.horizontal, 20)
+                    HStack(spacing: 0) {
+                        Text("Frequency")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        VStack(spacing: 2) {
+                            Text(formatGHz(freq.pCoreMHz))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.orange)
+                            Text("P-cores")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(width: 64)
+                        VStack(spacing: 2) {
+                            Text(formatGHz(freq.eCoreMHz))
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.blue)
+                            Text("E-cores")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(width: 64)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                }
+
+                // Fans
+                if !systemMonitor.fanInfo.isEstimate,
+                   systemMonitor.fanInfo.rpm > 0 || !systemMonitor.fanInfo.speeds.isEmpty {
+                    Divider().opacity(0.3).padding(.horizontal, 20)
+                    HStack(spacing: 0) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "fanblades.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                            Text("Fans")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                        Text(fanSpeedText(systemMonitor.fanInfo))
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                }
+
+                // Thermal pressure
+                Divider().opacity(0.3).padding(.horizontal, 20)
+                HStack(spacing: 0) {
+                    Text("Thermal Pressure")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(thermalPressureColor(systemMonitor.fanInfo.thermalPressure))
+                            .frame(width: 6, height: 6)
+                        Text(systemMonitor.fanInfo.thermalPressure)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(thermalPressureColor(systemMonitor.fanInfo.thermalPressure))
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
             }
             .background(
                 RoundedRectangle(cornerRadius: 12)
@@ -544,6 +620,49 @@ struct CPUSectionView: View {
             )
             .padding(.horizontal, 16)
             .padding(.top, 16)
+
+            // GPU card
+            if let gpu = extras.gpuUtilization {
+                HStack(spacing: 12) {
+                    Image(systemName: "square.stack.3d.up.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.orange.gradient)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("GPU")
+                            .font(.system(size: 11, weight: .semibold))
+                        if systemMonitor.gpuTemperature > 0 {
+                            Text(formatTemp(systemMonitor.gpuTemperature))
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    Spacer()
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 70, height: 6)
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(gpuColor(gpu))
+                            .frame(width: 70 * CGFloat(min(gpu / 100, 1)), height: 6)
+                    }
+                    Text(String(format: "%.0f%%", gpu))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(gpuColor(gpu))
+                        .frame(minWidth: 44, alignment: .trailing)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
 
             // Top Processes Section
             VStack(alignment: .leading, spacing: 10) {
@@ -586,12 +705,48 @@ struct CPUSectionView: View {
             .padding(.top, 12)
             .padding(.bottom, 16)
         }
+        .onAppear { extras.start() }
+        .onDisappear { extras.stop() }
     }
-    
+
     private func formatTemp(_ celsius: Double) -> String {
         preferences.temperatureUnit == .fahrenheit
             ? String(format: "%.0f°F", TemperatureMonitor.celsiusToFahrenheit(celsius))
             : String(format: "%.0f°C", celsius)
+    }
+
+    private func formatGHz(_ mhz: Double) -> String {
+        mhz >= 1000
+            ? String(format: "%.2f GHz", mhz / 1000)
+            : String(format: "%.0f MHz", mhz)
+    }
+
+    private func fanSpeedText(_ fan: FanInfo) -> String {
+        if fan.speeds.count > 2 {
+            let avg = fan.speeds.reduce(0, +) / fan.speeds.count
+            return "\(fan.speeds.count) fans · \(avg) RPM avg"
+        }
+        if !fan.speeds.isEmpty {
+            return fan.speeds.map { "\($0)" }.joined(separator: " · ") + " RPM"
+        }
+        return String(format: "%.0f RPM", fan.rpm)
+    }
+
+    private func thermalPressureColor(_ pressure: String) -> Color {
+        let lower = pressure.lowercased()
+        if lower.contains("nominal") || lower.contains("normal") { return .green }
+        if lower.contains("moderate") || lower.contains("fair") { return .yellow }
+        if lower.contains("heavy") || lower.contains("serious") { return .orange }
+        return .red
+    }
+
+    private func gpuColor(_ usage: Double) -> Color {
+        switch usage {
+        case 0..<30: return .green
+        case 30..<60: return .blue
+        case 60..<80: return .orange
+        default: return .red
+        }
     }
 
     private func cpuColor(_ usage: Double) -> Color {
@@ -1627,7 +1782,8 @@ struct NetworkSectionView: View {
 // Disk Section
 struct DiskSectionView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
-    
+    let extras: StorageExtrasMonitor
+
     private var usedDisk: Double {
         systemMonitor.diskUsage.total - systemMonitor.diskUsage.free
     }
@@ -1961,7 +2117,164 @@ struct DiskSectionView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 16)
             }
+
+            // External / removable drives
+            if !extras.externalVolumes.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "externaldrive.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.purple)
+                        Text("External Drives")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                    }
+
+                    ForEach(extras.externalVolumes) { volume in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Image(systemName: volume.isRemovable || volume.isEjectable
+                                      ? "externaldrive.fill" : "internaldrive.fill")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                                Text(volume.name)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .lineLimit(1)
+                                Spacer()
+                                Text("\(formatVolumeBytes(volume.freeBytes)) free")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(height: 5)
+                                GeometryReader { geo in
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.purple)
+                                        .frame(width: geo.size.width * CGFloat(volume.usedFraction), height: 5)
+                                }
+                                .frame(height: 5)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+            }
+
+            // SSD Health card (NVMe SMART)
+            if !extras.drives.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: "waveform.path.ecg")
+                            .font(.system(size: 11))
+                            .foregroundColor(.mint)
+                        Text("SSD Health")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                    }
+
+                    ForEach(extras.drives) { drive in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(drive.name)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(drive.hasCriticalWarning ? Color.red : Color.green)
+                                        .frame(width: 6, height: 6)
+                                    Text(drive.hasCriticalWarning ? "Warning" : "Healthy")
+                                        .font(.system(size: 9, weight: .medium))
+                                        .foregroundColor(drive.hasCriticalWarning ? .red : .green)
+                                }
+                            }
+
+                            HStack {
+                                Text("Life Remaining")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Text("\(drive.lifeRemainingPercent)%")
+                                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(ssdLifeColor(drive.lifeRemainingPercent))
+                            }
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(height: 6)
+                                GeometryReader { geo in
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(ssdLifeColor(drive.lifeRemainingPercent))
+                                        .frame(width: geo.size.width * CGFloat(drive.lifeRemainingPercent) / 100, height: 6)
+                                }
+                                .frame(height: 6)
+                            }
+
+                            Text(ssdSummaryLine(drive))
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+                        )
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+            }
         }
+        .onAppear { extras.start() }
+        .onDisappear { extras.stop() }
+    }
+
+    private func formatVolumeBytes(_ bytes: Double) -> String {
+        let tb = bytes / 1_000_000_000_000.0
+        if tb >= 1 { return String(format: "%.1f TB", tb) }
+        return String(format: "%.0f GB", bytes / 1_000_000_000.0)
+    }
+
+    private func ssdLifeColor(_ percent: Int) -> Color {
+        if percent > 50 { return .green }
+        if percent > 20 { return .yellow }
+        return .red
+    }
+
+    private func ssdSummaryLine(_ drive: NVMeDriveHealth) -> String {
+        var parts: [String] = []
+        let tb = drive.dataWrittenBytes / 1_000_000_000_000.0
+        parts.append(tb >= 1
+                     ? String(format: "%.1f TB written", tb)
+                     : String(format: "%.0f GB written", drive.dataWrittenBytes / 1_000_000_000.0))
+        if drive.powerOnHours > 0 {
+            parts.append(drive.powerOnHours >= 48
+                         ? String(format: "%.0f days on", Double(drive.powerOnHours) / 24.0)
+                         : "\(drive.powerOnHours)h on")
+        }
+        if drive.temperatureC > 0 {
+            parts.append(String(format: "%.0f°C", drive.temperatureC))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func relativeBackupString(_ date: Date) -> String {
@@ -2593,6 +2906,8 @@ struct GenericSparklineView: View {
 struct PowerSectionView: View {
     @Environment(SystemMonitor.self) private var systemMonitor
     @EnvironmentObject var preferences: PreferencesManager
+    let extras: PerformanceExtrasMonitor
+    let bluetooth: BluetoothBatteryMonitor
 
     private var watts: Double { systemMonitor.powerConsumptionInfo.totalSystemPower }
     private var cpuWatts: Double { systemMonitor.powerConsumptionInfo.cpuPower }
@@ -2876,8 +3191,124 @@ struct PowerSectionView: View {
                 .padding(.top, 12)
             }
 
+            // Energy impact card — top processes by billed energy
+            if !extras.topEnergyProcesses.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "bolt.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(.yellow)
+                        Text("Energy Impact")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        if !extras.energySupported {
+                            Text("by CPU time")
+                                .font(.system(size: 8))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    ForEach(extras.topEnergyProcesses) { process in
+                        HStack {
+                            Text(process.name)
+                                .font(.system(size: 11))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Text(process.isEstimate
+                                 ? String(format: "%.1f%%", process.milliwatts)
+                                 : formatEnergy(process.milliwatts))
+                                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundColor(.orange)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
+            // Bluetooth peripheral batteries
+            if !bluetooth.peripherals.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.system(size: 11))
+                            .foregroundColor(.blue)
+                        Text("Peripherals")
+                            .font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                    }
+
+                    ForEach(bluetooth.peripherals) { device in
+                        HStack(spacing: 8) {
+                            Image(systemName: device.iconName)
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                                .frame(width: 16)
+                            Text(device.name)
+                                .font(.system(size: 11))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            ZStack(alignment: .leading) {
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(width: 50, height: 6)
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(peripheralBatteryColor(device.batteryPercent))
+                                    .frame(width: 50 * CGFloat(device.batteryPercent) / 100, height: 6)
+                            }
+                            Text("\(device.batteryPercent)%")
+                                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                .foregroundColor(peripheralBatteryColor(device.batteryPercent))
+                                .frame(minWidth: 32, alignment: .trailing)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.thinMaterial)
+                        .overlay(RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 0.5))
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            }
+
             Spacer().frame(height: 16)
         }
+        .onAppear {
+            extras.start()
+            bluetooth.start()
+        }
+        .onDisappear {
+            extras.stop()
+            bluetooth.stop()
+        }
+    }
+
+    private func peripheralBatteryColor(_ percent: Int) -> Color {
+        switch percent {
+        case 0..<20: return .red
+        case 20..<40: return .orange
+        default: return .green
+        }
+    }
+
+    private func formatEnergy(_ milliwatts: Double) -> String {
+        milliwatts >= 1000
+            ? String(format: "%.2f W", milliwatts / 1000)
+            : String(format: "%.0f mW", milliwatts)
     }
 
     @ViewBuilder

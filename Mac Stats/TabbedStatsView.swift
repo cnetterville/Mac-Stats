@@ -55,6 +55,8 @@ struct TabbedStatsView: View {
     @EnvironmentObject var wifiManager: WiFiManager
     @Environment(\.openWindow) private var openWindow
     @State private var selectedCategory: StatsCategory = .overview
+    @State private var performanceExtras = PerformanceExtrasMonitor()
+    @State private var storageExtras = StorageExtrasMonitor()
     
     var body: some View {
         VStack(spacing: 0) {
@@ -261,14 +263,23 @@ struct TabbedStatsView: View {
         VStack(spacing: 12) {
             fullCPUCard
             fullMemoryCard
+            GPUUsageCard(extras: performanceExtras)
+            CPUFrequencyCard(extras: performanceExtras)
+            EnergyImpactCard(extras: performanceExtras)
         }
+        .onAppear { performanceExtras.start() }
+        .onDisappear { performanceExtras.stop() }
     }
-    
+
     private var storageContent: some View {
         VStack(spacing: 12) {
             fullDiskCard
             externalDrivesCard
+            SSDHealthCard(extras: storageExtras)
+            TimeMachineCard(extras: storageExtras)
         }
+        .onAppear { storageExtras.start() }
+        .onDisappear { storageExtras.stop() }
     }
     
     private var fullDiskCard: some View {
